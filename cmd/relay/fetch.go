@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	// "github.com/sirseerhq/sirseer-relay/internal/github" // TODO: uncomment when implementing client
+	"github.com/sirseerhq/sirseer-relay/internal/github"
 	"github.com/sirseerhq/sirseer-relay/internal/output"
 	relaierrors "github.com/sirseerhq/sirseer-relay/internal/errors"
 )
@@ -93,9 +93,48 @@ func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile string) error 
 	}
 	defer writer.Close()
 
-	// TODO: Create GitHub client and fetch PRs
-	// For now, return a placeholder message
-	fmt.Fprintf(os.Stderr, "Fetching pull requests from %s/%s...\n", owner, repo)
+	// Create GitHub client
+	client := github.NewGraphQLClient(token)
+	
+	// Prepare fetch options
+	opts := github.FetchOptions{
+		PageSize: 50, // Phase 1: single page only
+	}
+	
+	// Show progress
+	fmt.Fprintf(os.Stderr, "Fetching pull requests from %s/%s...", owner, repo)
+	
+	// Fetch PRs
+	page, err := client.FetchPullRequests(ctx, owner, repo, opts)
+	if err != nil {
+		// Clear progress line
+		fmt.Fprintf(os.Stderr, "\r\033[K")
+		return err
+	}
+	
+	// Write PRs to output
+	prCount := 0
+	for _, pr := range page.PullRequests {
+		if err := writer.Write(pr); err != nil {
+			return fmt.Errorf("failed to write PR: %w", err)
+		}
+		prCount++
+		
+		// Update progress
+		fmt.Fprintf(os.Stderr, "\rFetching pull requests from %s/%s... %d PRs fetched", owner, repo, prCount)
+	}
+	
+	// Final message
+	fmt.Fprintf(os.Stderr, "\r\033[K") // Clear progress line
+	
+	if outputFile != "" {
+		fmt.Fprintf(os.Stderr, "Successfully wrote %d pull requests to %s\n", prCount, outputFile)
+	} else {
+		// For stdout, just clear the line - data is already written
+		if prCount == 0 {
+			fmt.Fprintf(os.Stderr, "No pull requests found in %s/%s\n", owner, repo)
+		}
+	}
 	
 	return nil
 }
