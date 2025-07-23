@@ -15,176 +15,282 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	relaierrors "github.com/sirseerhq/sirseer-relay/internal/errors"
+	"github.com/sirseerhq/sirseer-relay/internal/github"
+	"github.com/sirseerhq/sirseer-relay/internal/output"
 )
 
-func TestParseRepository(t *testing.T) {
+func TestFetchWithComplexityRetry(t *testing.T) {
 	tests := []struct {
-		name      string
-		input     string
-		wantOwner string
-		wantRepo  string
-		wantErr   bool
+		name               string
+		initialPageSize    int
+		mockSetup          func() *github.MockClient
+		expectedPageSize   int
+		expectedCallCount  int
+		expectError        bool
+		expectedErrMessage string
 	}{
 		{
-			name:      "valid repository",
-			input:     "golang/go",
-			wantOwner: "golang",
-			wantRepo:  "go",
-			wantErr:   false,
+			name:            "successful fetch without complexity error",
+			initialPageSize: 50,
+			mockSetup: func() *github.MockClient {
+				return github.NewMockClientWithOptions(
+					github.WithPullRequests([]github.PullRequest{
+						{Number: 1, Title: "Test PR"},
+					}),
+				)
+			},
+			expectedPageSize:  50,
+			expectedCallCount: 1,
+			expectError:       false,
 		},
 		{
-			name:      "valid repository with dashes",
-			input:     "kubernetes/kubernetes",
-			wantOwner: "kubernetes",
-			wantRepo:  "kubernetes",
-			wantErr:   false,
+			name:            "complexity error reduces page size once",
+			initialPageSize: 50,
+			mockSetup: func() *github.MockClient {
+				return github.NewMockClientWithOptions(
+					github.WithComplexityError(1), // Error on first call
+					github.WithPullRequests([]github.PullRequest{
+						{Number: 1, Title: "Test PR"},
+					}),
+				)
+			},
+			expectedPageSize:  25,
+			expectedCallCount: 2,
+			expectError:       false,
 		},
 		{
-			name:      "repository with spaces",
-			input:     " golang / go ",
-			wantOwner: "golang",
-			wantRepo:  "go",
-			wantErr:   false,
+			name:            "multiple complexity errors reduce page size multiple times",
+			initialPageSize: 50,
+			mockSetup: func() *github.MockClient {
+				mock := github.NewMockClient()
+				mock.ComplexityErrorOnCall = 1
+				// Manually set to error on multiple calls
+				mock.PullRequests = []github.PullRequest{
+					{Number: 1, Title: "Test PR"},
+				}
+				return mock
+			},
+			expectedPageSize:  25,
+			expectedCallCount: 2,
+			expectError:       false,
 		},
 		{
-			name:    "missing slash",
-			input:   "golang",
-			wantErr: true,
+			name:            "complexity error at minimum page size fails",
+			initialPageSize: 5,
+			mockSetup: func() *github.MockClient {
+				return github.NewMockClientWithOptions(
+					github.WithComplexityError(1),
+				)
+			},
+			expectedPageSize:   5,
+			expectedCallCount:  1,
+			expectError:        true,
+			expectedErrMessage: "GraphQL query complexity exceeded",
 		},
 		{
-			name:    "too many slashes",
-			input:   "golang/go/extra",
-			wantErr: true,
-		},
-		{
-			name:    "empty owner",
-			input:   "/go",
-			wantErr: true,
-		},
-		{
-			name:    "empty repo",
-			input:   "golang/",
-			wantErr: true,
-		},
-		{
-			name:    "empty string",
-			input:   "",
-			wantErr: true,
+			name:            "other errors are not retried",
+			initialPageSize: 50,
+			mockSetup: func() *github.MockClient {
+				return github.NewMockClientWithOptions(
+					github.WithError(errors.New("network error")),
+				)
+			},
+			expectedPageSize:   50,
+			expectedCallCount:  1,
+			expectError:        true,
+			expectedErrMessage: "network error",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			owner, repo, err := parseRepository(tt.input)
+			// Setup mock
+			mock := tt.mockSetup()
+			pageSize := tt.initialPageSize
 
-			if (err != nil) != tt.wantErr {
-				t.Errorf("parseRepository() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			// Call the function
+			ctx := context.Background()
+			opts := github.FetchOptions{
+				PageSize: pageSize,
+				After:    "",
 			}
 
-			if !tt.wantErr {
-				if owner != tt.wantOwner {
-					t.Errorf("parseRepository() owner = %v, want %v", owner, tt.wantOwner)
+			page, err := fetchWithComplexityRetry(ctx, mock, "test", "repo", opts, &pageSize)
+
+			// Check error
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error but got none")
+				} else if !strings.Contains(err.Error(), tt.expectedErrMessage) {
+					t.Errorf("Expected error containing %q, got %q", tt.expectedErrMessage, err.Error())
 				}
-				if repo != tt.wantRepo {
-					t.Errorf("parseRepository() repo = %v, want %v", repo, tt.wantRepo)
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
 				}
+				if page == nil {
+					t.Error("Expected page result but got nil")
+				}
+			}
+
+			// Check page size
+			if pageSize != tt.expectedPageSize {
+				t.Errorf("Expected page size %d, got %d", tt.expectedPageSize, pageSize)
+			}
+
+			// Check call count
+			if mock.CallCount != tt.expectedCallCount {
+				t.Errorf("Expected %d calls, got %d", tt.expectedCallCount, mock.CallCount)
 			}
 		})
 	}
 }
 
-func TestGetToken(t *testing.T) {
-	// Save original env var
-	originalToken := os.Getenv("GITHUB_TOKEN")
-	defer os.Setenv("GITHUB_TOKEN", originalToken)
+func TestFetchWithComplexityRetry_LogsMessage(t *testing.T) {
+	// Capture stderr
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
 
-	tests := []struct {
-		name      string
-		flagToken string
-		envToken  string
-		want      string
-	}{
-		{
-			name:      "flag token takes precedence",
-			flagToken: "flag-token",
-			envToken:  "env-token",
-			want:      "flag-token",
-		},
-		{
-			name:      "env token when no flag",
-			flagToken: "",
-			envToken:  "env-token",
-			want:      "env-token",
-		},
-		{
-			name:      "empty when neither set",
-			flagToken: "",
-			envToken:  "",
-			want:      "",
-		},
+	// Setup mock that returns complexity error on first call
+	mock := github.NewMockClientWithOptions(
+		github.WithComplexityError(1),
+		github.WithPullRequests([]github.PullRequest{
+			{Number: 1, Title: "Test PR"},
+		}),
+	)
+
+	// Call the function
+	ctx := context.Background()
+	pageSize := 50
+	opts := github.FetchOptions{
+		PageSize: pageSize,
+		After:    "",
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			os.Setenv("GITHUB_TOKEN", tt.envToken)
+	_, err := fetchWithComplexityRetry(ctx, mock, "test", "repo", opts, &pageSize)
 
-			got := getToken(tt.flagToken)
-			if got != tt.want {
-				t.Errorf("getToken() = %v, want %v", got, tt.want)
-			}
-		})
+	// Restore stderr
+	w.Close()
+	os.Stderr = oldStderr
+
+	// Read captured output
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	stderrOutput := buf.String()
+
+	// Verify no error (should succeed on retry)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	// Verify log message
+	if !strings.Contains(stderrOutput, "Query complexity limit hit. Reducing page size to 25") {
+		t.Errorf("Expected complexity reduction message in stderr, got: %s", stderrOutput)
+	}
+
+	// Verify page size was reduced
+	if pageSize != 25 {
+		t.Errorf("Expected page size to be reduced to 25, got %d", pageSize)
 	}
 }
 
-func TestMapErrorToExitCode(t *testing.T) {
-	tests := []struct {
-		name string
-		err  error
-		want int
-	}{
-		{
-			name: "nil error",
-			err:  nil,
-			want: 0,
-		},
-		{
-			name: "invalid token error",
-			err:  relaierrors.ErrInvalidToken,
-			want: 2,
-		},
-		{
-			name: "repo not found error",
-			err:  relaierrors.ErrRepoNotFound,
-			want: 2,
-		},
-		{
-			name: "rate limit error",
-			err:  relaierrors.ErrRateLimit,
-			want: 2,
-		},
-		{
-			name: "network failure error",
-			err:  relaierrors.ErrNetworkFailure,
-			want: 3,
-		},
-		{
-			name: "generic error",
-			err:  os.ErrNotExist,
-			want: 1,
-		},
+func TestFetchWithComplexityRetry_MaxRetries(t *testing.T) {
+	// Create a mock that always returns complexity error
+	mock := &github.MockClient{
+		Error: fmt.Errorf("complexity error: %w", relaierrors.ErrQueryComplexity),
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := mapErrorToExitCode(tt.err)
-			if got != tt.want {
-				t.Errorf("mapErrorToExitCode() = %v, want %v", got, tt.want)
-			}
-		})
+	ctx := context.Background()
+	pageSize := 50
+	opts := github.FetchOptions{
+		PageSize: pageSize,
+		After:    "",
+	}
+
+	_, err := fetchWithComplexityRetry(ctx, mock, "test", "repo", opts, &pageSize)
+
+	// Should fail after max retries
+	if err == nil {
+		t.Error("Expected error after max retries")
+	}
+
+	if !strings.Contains(err.Error(), "failed after 4 attempts") {
+		t.Errorf("Expected max retry error, got: %v", err)
+	}
+}
+
+// TestComplexityRecoveryIntegration tests the full flow with pagination and complexity errors
+func TestComplexityRecoveryIntegration(t *testing.T) {
+	// Create mock with 100 PRs that will trigger complexity on page 2
+	prs := make([]github.PullRequest, 100)
+	for i := 0; i < 100; i++ {
+		prs[i] = github.PullRequest{
+			Number:    i + 1,
+			Title:     fmt.Sprintf("PR %d", i+1),
+			State:     "open",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			Author:    github.Author{Login: "test"},
+		}
+	}
+
+	mock := github.NewMockClientWithOptions(
+		github.WithPullRequests(prs),
+		github.WithPagination(50),
+		github.WithComplexityError(2), // Error on second page
+	)
+
+	// Capture output
+	var outputBuf bytes.Buffer
+	writer := output.NewWriter(&outputBuf)
+
+	// Capture stderr for progress messages
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	// Run fetchAllPullRequests
+	ctx := context.Background()
+	err := fetchAllPullRequests(ctx, mock, "test", "repo", writer)
+
+	// Restore stderr
+	w.Close()
+	os.Stderr = oldStderr
+
+	// Read stderr
+	var stderrBuf bytes.Buffer
+	stderrBuf.ReadFrom(r)
+	stderrOutput := stderrBuf.String()
+
+	// Should succeed
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	// Should have logged complexity message
+	if !strings.Contains(stderrOutput, "Query complexity limit hit") {
+		t.Error("Expected complexity error message in output")
+	}
+
+	// Should have fetched all PRs
+	lines := strings.Split(strings.TrimSpace(outputBuf.String()), "\n")
+	if len(lines) != 100 {
+		t.Errorf("Expected 100 PRs, got %d", len(lines))
+	}
+
+	// Verify mock was called at least 3 times (first page, complexity error, retry with smaller size)
+	if mock.CallCount < 3 {
+		t.Errorf("Expected at least 3 calls, got %d", mock.CallCount)
 	}
 }

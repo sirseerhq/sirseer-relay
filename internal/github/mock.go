@@ -45,6 +45,10 @@ type MockClient struct {
 	TotalPullRequests int
 	PageSize          int
 	SimulatePages     bool
+
+	// Query complexity simulation
+	ComplexityErrorOnCall int // Return complexity error on this call number (0 = never)
+	CallsSinceComplexity  int // Track calls since last complexity error
 }
 
 // NewMockClient creates a new mock client with default test data
@@ -105,7 +109,14 @@ func (m *MockClient) FetchPullRequests(ctx context.Context, owner, repo string, 
 	default:
 	}
 
-	// Check for errors
+	// Check for query complexity error first (before other errors)
+	if m.ComplexityErrorOnCall > 0 && m.CallCount == m.ComplexityErrorOnCall {
+		m.CallsSinceComplexity = 0
+		return nil, fmt.Errorf("GraphQL query complexity exceeded: %w", relaierrors.ErrQueryComplexity)
+	}
+	m.CallsSinceComplexity++
+
+	// Check for other errors
 	if err := m.checkErrors(owner, repo); err != nil {
 		return nil, err
 	}
@@ -249,6 +260,13 @@ func WithError(err error) MockClientOption {
 func WithAuthFailure() MockClientOption {
 	return func(m *MockClient) {
 		m.ShouldFailAuth = true
+	}
+}
+
+// WithComplexityError makes the client return a query complexity error on specific call
+func WithComplexityError(callNumber int) MockClientOption {
+	return func(m *MockClient) {
+		m.ComplexityErrorOnCall = callNumber
 	}
 }
 

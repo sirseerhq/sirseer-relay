@@ -27,7 +27,7 @@ func buildBinary(t *testing.T) string {
 	// Build binary in temp directory
 	tmpDir := t.TempDir()
 	binaryPath := filepath.Join(tmpDir, "sirseer-relay")
-	
+
 	cmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd/relay")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("Failed to build binary: %v\nOutput: %s", err, output)
@@ -40,9 +40,9 @@ func TestCLI_InvalidRepoFormat(t *testing.T) {
 	binaryPath := buildBinary(t)
 
 	tests := []struct {
-		name     string
-		repo     string
-		wantErr  string
+		name    string
+		repo    string
+		wantErr string
 	}{
 		{
 			name:    "missing slash",
@@ -139,7 +139,7 @@ func TestCLI_HelpCommand(t *testing.T) {
 			}
 
 			output := stdout.String()
-			
+
 			// Verify help content
 			if !strings.Contains(output, "sirseer-relay") {
 				t.Error("Expected binary name in help output")
@@ -175,7 +175,7 @@ func TestCLI_VersionFlag(t *testing.T) {
 	}
 
 	output := stdout.String()
-	
+
 	// Version should contain "sirseer-relay" and a version
 	if !strings.Contains(output, "sirseer-relay") {
 		t.Error("Expected binary name in version output")
@@ -300,7 +300,7 @@ func TestCLI_ExitCodes(t *testing.T) {
 			}
 
 			err := cmd.Run()
-			
+
 			exitCode := 0
 			if err != nil {
 				if exitErr, ok := err.(*exec.ExitError); ok {
