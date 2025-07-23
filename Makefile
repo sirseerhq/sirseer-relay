@@ -29,9 +29,35 @@ test-coverage:
 	$(GO) tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
+# Add license headers to all Go files
+.PHONY: license
+license:
+	@echo "Adding/updating license headers..."
+	@if ! command -v addlicense >/dev/null 2>&1; then \
+		echo "Installing addlicense..."; \
+		go install github.com/google/addlicense@latest; \
+	fi
+	PATH=$$PATH:$$(go env GOPATH)/bin addlicense -f .license-header -c "SirSeer Inc." -y 2025 $$(find . -name '*.go')
+
+# Check license headers
+.PHONY: license-check
+license-check:
+	@echo "Checking license headers..."
+	@if ! command -v addlicense >/dev/null 2>&1; then \
+		echo "Installing addlicense..."; \
+		go install github.com/google/addlicense@latest; \
+	fi
+	@if PATH=$$PATH:$$(go env GOPATH)/bin addlicense -check -f .license-header -c "SirSeer Inc." -y 2025 $$(find . -name '*.go') 2>&1 | grep -q .; then \
+		echo "ERROR: Some files are missing required license headers."; \
+		PATH=$$PATH:$$(go env GOPATH)/bin addlicense -check -f .license-header -c "SirSeer Inc." -y 2025 $$(find . -name '*.go'); \
+		exit 1; \
+	else \
+		echo "All files have proper license headers."; \
+	fi
+
 # Run linter
 .PHONY: lint
-lint:
+lint: license-check
 	@echo "Running linters..."
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run ./...; \
@@ -90,7 +116,9 @@ help:
 	@echo "  build          - Build the binary"
 	@echo "  test           - Run tests"
 	@echo "  test-coverage  - Run tests with coverage report"
-	@echo "  lint           - Run linters"
+	@echo "  license        - Add/update license headers in all Go files"
+	@echo "  license-check  - Check if all Go files have license headers"
+	@echo "  lint           - Run linters (includes license check)"
 	@echo "  fmt            - Format code"
 	@echo "  clean          - Remove build artifacts"
 	@echo "  deps           - Install dependencies"

@@ -2,6 +2,9 @@
 CLAUDE.md
 PIVOT_PLAN.md
 
+# License header template
+.license-header
+
 # Binaries for programs and plugins
 *.exe
 *.exe~
