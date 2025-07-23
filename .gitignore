@@ -1,0 +1,56 @@
+# Planning documents
+CLAUDE.md
+PIVOT_PLAN.md
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Binary output
+sirseer-relay
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.txt
+coverage.html
+
+# Dependency directories
+vendor/
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Build directories
+dist/
+build/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Test output
+test-output/
+*.ndjson
+*.json
+!test/fixtures/**/*.json
+
+# State files
+*.state
+
+# Temporary files
+tmp/
+temp/
