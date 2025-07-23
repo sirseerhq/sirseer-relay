@@ -30,8 +30,8 @@ func main() {
 		Long: `SirSeer Relay is a high-performance tool for extracting comprehensive
 pull request data from GitHub repositories. It efficiently handles repositories
 of any size while maintaining low memory usage through streaming architecture.`,
-		Version: version,
-		SilenceUsage: true, // Don't show usage on error
+		Version:       version,
+		SilenceUsage:  true, // Don't show usage on error
 		SilenceErrors: true, // We'll handle error printing ourselves
 	}
 

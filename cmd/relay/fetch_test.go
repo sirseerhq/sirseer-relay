@@ -80,12 +80,12 @@ func TestParseRepository(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			owner, repo, err := parseRepository(tt.input)
-			
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parseRepository() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			
+
 			if !tt.wantErr {
 				if owner != tt.wantOwner {
 					t.Errorf("parseRepository() owner = %v, want %v", owner, tt.wantOwner)
@@ -104,7 +104,7 @@ func TestGetToken(t *testing.T) {
 	defer os.Setenv("GITHUB_TOKEN", originalToken)
 
 	tests := []struct {
-		name     string
+		name      string
 		flagToken string
 		envToken  string
 		want      string
@@ -132,7 +132,7 @@ func TestGetToken(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			os.Setenv("GITHUB_TOKEN", tt.envToken)
-			
+
 			got := getToken(tt.flagToken)
 			if got != tt.want {
 				t.Errorf("getToken() = %v, want %v", got, tt.want)
