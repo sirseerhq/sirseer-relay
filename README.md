@@ -2,20 +2,26 @@
 
 A high-performance tool for extracting pull request metadata from GitHub repositories.
 
-## Overview
+## Quick Start
 
-SirSeer Relay is a command-line tool that efficiently extracts comprehensive pull request data from GitHub repositories. It's designed to handle repositories of any size while maintaining low memory usage through streaming architecture.
+```bash
+# Set your GitHub token
+export GITHUB_TOKEN=ghp_your_token_here
+
+# Fetch recent PRs
+sirseer-relay fetch golang/go
+
+# Fetch all PRs from a repository
+sirseer-relay fetch kubernetes/kubernetes --all
+```
 
 ## Features
 
-- **Efficient Data Extraction**: Fetches complete PR metadata including reviews, commits, and files
-- **Full Repository Fetching**: Extract all pull requests with automatic pagination
-- **Constant Memory Usage**: Streams data directly to disk, using less than 100MB regardless of repository size
-- **Live Progress Tracking**: Real-time progress indicator with percentage completion and ETA
-- **Automatic Query Recovery**: Intelligently handles GraphQL complexity limits by adjusting batch size
-- **Incremental Updates**: Resume from where you left off with built-in state management
-- **Enterprise Ready**: Supports GitHub Enterprise installations
-- **Cross-Platform**: Available for Linux, macOS, and Windows
+- 📊 **Stream Large Repositories** - Handles 100k+ PRs with < 100MB memory
+- 🔄 **Incremental Updates** - Fetch only new PRs since last run
+- 📅 **Time Window Filtering** - Extract PRs from specific date ranges
+- 🚀 **Fast & Reliable** - Automatic retry and progress tracking
+- 🏢 **Enterprise Ready** - Supports GitHub Enterprise Server
 
 ## Requirements
 
@@ -36,60 +42,67 @@ make build
 
 Download the latest release for your platform from the [Releases](https://github.com/sirseerhq/sirseer-relay/releases) page.
 
-## Usage
+## Common Usage Patterns
 
-### Basic Usage
-
-By default, sirseer-relay fetches only the first page of pull requests (up to 50 most recently updated PRs):
-
+### Fetch All PRs
 ```bash
-export GITHUB_TOKEN=your_github_token
-./sirseer-relay fetch organization/repository
+sirseer-relay fetch owner/repo --all --output prs.ndjson
 ```
 
-### Fetching All Pull Requests
-
-To fetch all pull requests from a repository with automatic pagination:
-
+### Incremental Updates
 ```bash
-./sirseer-relay fetch organization/repository --all
+# First run: full fetch
+sirseer-relay fetch owner/repo --all
+
+# Daily updates: only new PRs
+sirseer-relay fetch owner/repo --incremental
 ```
 
-This will display a real-time progress indicator:
-```
-Fetching all 12543 pull requests from kubernetes/kubernetes...
-Progress: 3250 / 12543 PRs [25.9%] | Page 65 | ETA: 2m15s
-```
-
-### Command Syntax
-
-```
-sirseer-relay fetch <org>/<repo> [flags]
+### Time Window Filtering
+```bash
+# Fetch PRs from Q1 2024
+sirseer-relay fetch owner/repo --since 2024-01-01 --until 2024-03-31
 ```
 
-### Options
+### Key Options
 
-- `--token`: GitHub personal access token (overrides GITHUB_TOKEN env var)
-- `--output`: Output file path (default: stdout)
-- `--all`: Fetch all pull requests from the repository
-- `--request-timeout`: Request timeout in seconds (default: 180, useful for large repos)
-- `--since`: Fetch PRs created after a specific date (not implemented yet)
-- `--until`: Fetch PRs created before a specific date (not implemented yet)
-- `--incremental`: Resume from the last successful fetch (not implemented yet)
+- `--all` - Fetch complete PR history
+- `--incremental` - Fetch only new PRs since last run
+- `--since` / `--until` - Filter by creation date
+- `--output` - Save to file (default: stdout)
+- `--token` - Override GITHUB_TOKEN env var
 
-### Output
+## Documentation
 
-Data is exported in NDJSON (Newline Delimited JSON) format, with one pull request per line. This format is ideal for streaming processing and data analysis tools.
+For detailed guides and advanced usage:
 
-## Configuration
+- 📖 **[Usage Guide](docs/USAGE.md)** - Comprehensive examples and patterns
+- 🔧 **[State Management](docs/STATE_MANAGEMENT.md)** - How incremental fetching works
+- ❓ **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- 📝 **[Examples](examples/)** - Automation scripts and workflows
 
-For GitHub Enterprise installations, create a configuration file at `~/.sirseer/config.yaml`:
+## Output Format
+
+Data is exported in **NDJSON** (Newline Delimited JSON) format:
+
+```json
+{"number":1234,"title":"Add feature","state":"closed","created_at":"2024-01-15T10:30:00Z",...}
+{"number":1235,"title":"Fix bug","state":"open","created_at":"2024-01-16T14:20:00Z",...}
+```
+
+Perfect for streaming processing with tools like `jq`, `awk`, or data pipelines.
+
+## Enterprise GitHub
+
+For GitHub Enterprise Server, create `~/.sirseer/config.yaml`:
 
 ```yaml
 github:
-  api_endpoint: https://github.your-company.com/api/v3
-  graphql_endpoint: https://github.your-company.com/api/graphql
+  api_endpoint: https://github.company.com/api/v3
+  graphql_endpoint: https://github.company.com/api/graphql
 ```
+
+Then use sirseer-relay normally. See [Troubleshooting](docs/TROUBLESHOOTING.md#enterprise-github) for more details.
 
 ## Contributing
 

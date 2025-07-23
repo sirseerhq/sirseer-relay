@@ -51,7 +51,23 @@ For example: golang/go, kubernetes/kubernetes
 
 Authentication is required via GitHub token:
   - Use --token flag to provide token directly
-  - Or set GITHUB_TOKEN environment variable`,
+  - Or set GITHUB_TOKEN environment variable
+
+Examples:
+  # Fetch first page of PRs (most recent 50)
+  sirseer-relay fetch golang/go
+
+  # Fetch all PRs from a repository
+  sirseer-relay fetch kubernetes/kubernetes --all
+
+  # Fetch PRs created in 2024
+  sirseer-relay fetch golang/go --since 2024-01-01 --until 2024-12-31
+
+  # Resume from previous fetch (incremental update)
+  sirseer-relay fetch golang/go --incremental
+
+  # Save output to a file
+  sirseer-relay fetch golang/go --all --output prs.ndjson`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Create context with timeout
@@ -75,10 +91,12 @@ Authentication is required via GitHub token:
 	// Pagination flag
 	cmd.Flags().BoolVar(&fetchAll, "all", false, "Fetch all pull requests from the repository")
 
-	// Future flags (not implemented yet)
-	cmd.Flags().String("since", "", "Fetch PRs created after this date")
-	cmd.Flags().String("until", "", "Fetch PRs created before this date")
-	cmd.Flags().Bool("incremental", false, "Resume from last fetch")
+	// Time window filtering
+	cmd.Flags().String("since", "", "Fetch PRs created on or after this date (format: YYYY-MM-DD, RFC3339, or relative like 7d)")
+	cmd.Flags().String("until", "", "Fetch PRs created on or before this date (format: YYYY-MM-DD, RFC3339, or relative like 7d)")
+	
+	// Incremental fetch
+	cmd.Flags().Bool("incremental", false, "Continue from the last successful fetch (requires previous state file)")
 
 	return cmd
 }
