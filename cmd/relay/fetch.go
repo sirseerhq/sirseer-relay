@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	relaierrors "github.com/sirseerhq/sirseer-relay/internal/errors"
 	"github.com/sirseerhq/sirseer-relay/internal/github"
@@ -47,7 +48,11 @@ Authentication is required via GitHub token:
   - Or set GITHUB_TOKEN environment variable`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runFetch(cmd.Context(), args[0], token, outputFile)
+			// Create context with timeout
+			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+			defer cancel()
+
+			return runFetch(ctx, args[0], token, outputFile)
 		},
 	}
 

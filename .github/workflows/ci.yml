@@ -80,8 +80,12 @@ jobs:
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
           echo "Total coverage: $COVERAGE%"
-          # For now, let's check what the coverage is
-          echo "Current coverage is $COVERAGE%"
+          THRESHOLD=75
+          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+            echo "Coverage $COVERAGE% is below the $THRESHOLD% threshold"
+            exit 1
+          fi
+          echo "Coverage $COVERAGE% meets the $THRESHOLD% threshold"
 
   build:
     name: Build

@@ -23,6 +23,7 @@ import (
 
 	"github.com/shurcooL/graphql"
 	relaierrors "github.com/sirseerhq/sirseer-relay/internal/errors"
+	"github.com/sirseerhq/sirseer-relay/pkg/version"
 )
 
 // GraphQLClient implements the GitHub Client interface using GraphQL API.
@@ -50,10 +51,6 @@ func NewGraphQLClient(token string) *GraphQLClient {
 
 // FetchPullRequests fetches a page of pull requests from the specified repository.
 func (c *GraphQLClient) FetchPullRequests(ctx context.Context, owner, repo string, opts FetchOptions) (*PullRequestPage, error) {
-	// Apply safety features: timeout and response size limit
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-
 	// Set default page size if not specified
 	pageSize := opts.PageSize
 	if pageSize <= 0 {
@@ -76,7 +73,11 @@ func (c *GraphQLClient) FetchPullRequests(ctx context.Context, owner, repo strin
 					UpdatedAt time.Time
 					ClosedAt  *time.Time
 					MergedAt  *time.Time
-					Author    struct {
+					// Author is a nested object that adds to query complexity.
+					// For Phase 1, this minimal structure is fine, but when implementing
+					// pagination in Phase 2, consider flattening or reducing nested fields
+					// to stay within GitHub's GraphQL complexity limits.
+					Author struct {
 						Login graphql.String
 					} `graphql:"author"`
 				}
@@ -179,7 +180,7 @@ func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.Header.Set("Authorization", "Bearer "+t.token)
 
 	// Add user agent for identification
-	req.Header.Set("User-Agent", "sirseer-relay/0.1.0")
+	req.Header.Set("User-Agent", fmt.Sprintf("sirseer-relay/%s", version.Version))
 
 	// Execute the request
 	resp, err := t.base.RoundTrip(req)
