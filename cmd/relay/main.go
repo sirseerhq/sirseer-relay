@@ -21,8 +21,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// version is the current version of sirseer-relay, set at build time via ldflags.
+// In development builds, this defaults to "dev".
 var version = "dev"
 
+// main is the entry point for the sirseer-relay CLI application.
+// It sets up the root command with version information and executes
+// the command tree. Exit codes are determined by the type of error
+// encountered during execution.
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "sirseer-relay",
@@ -42,4 +48,3 @@ of any size while maintaining low memory usage through streaming architecture.`,
 		os.Exit(mapErrorToExitCode(err))
 	}
 }
-

@@ -18,7 +18,9 @@ package github
 import "time"
 
 // PullRequest represents a GitHub pull request with essential metadata.
-// This struct contains only the fields needed for Phase 1 implementation.
+// This is the core data structure that gets serialized to NDJSON output.
+// It includes basic PR information while keeping memory usage minimal
+// to support streaming large repositories.
 type PullRequest struct {
 	Number    int        `json:"number"`
 	Title     string     `json:"title"`
@@ -31,11 +33,16 @@ type PullRequest struct {
 }
 
 // Author represents the author of a pull request.
+// Currently only includes the login name to minimize GraphQL query complexity.
+// Additional fields can be added in future phases if needed.
 type Author struct {
 	Login string `json:"login"`
 }
 
-// PullRequestPage represents a page of pull requests with pagination info.
+// PullRequestPage represents a page of pull requests from a GraphQL query.
+// It includes the pull requests for the current page and pagination information
+// to support fetching subsequent pages. This enables efficient streaming
+// without loading all PRs into memory at once.
 type PullRequestPage struct {
 	PullRequests []PullRequest
 	HasNextPage  bool
@@ -43,13 +50,17 @@ type PullRequestPage struct {
 }
 
 // FetchOptions configures how pull requests are fetched.
+// For Phase 1, this primarily controls the page size (default 50).
+// The After field enables cursor-based pagination for fetching
+// multiple pages in sequence.
 type FetchOptions struct {
 	// PageSize controls how many PRs to fetch per page.
-	// For Phase 1, this is not user-configurable.
+	// Defaults to 50 if not specified. Maximum is 100 per GitHub's API limits.
 	PageSize int
 
 	// After is the cursor for pagination.
 	// Empty string fetches from the beginning.
+	// Use PullRequestPage.EndCursor from previous response for next page.
 	After string
 }
 
@@ -59,7 +70,8 @@ const (
 )
 
 // RepositoryInfo contains basic repository metadata.
-// Used to get total PR count for progress tracking.
+// Used primarily to get the total PR count for accurate progress tracking
+// and ETA calculation when fetching all pull requests with the --all flag.
 type RepositoryInfo struct {
 	TotalPullRequests int
 }

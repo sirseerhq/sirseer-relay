@@ -37,17 +37,33 @@ Download the latest release for your platform from the [Releases](https://github
 
 ### Basic Usage
 
+By default, sirseer-relay fetches only the first page of pull requests (up to 50 most recently updated PRs):
+
 ```bash
 export GITHUB_TOKEN=your_github_token
+./sirseer-relay fetch organization/repository
+```
+
+To fetch all pull requests from a repository:
+
+```bash
 ./sirseer-relay fetch organization/repository --all
+```
+
+### Command Syntax
+
+```
+sirseer-relay fetch <org>/<repo> [flags]
 ```
 
 ### Options
 
+- `--token`: GitHub personal access token (overrides GITHUB_TOKEN env var)
+- `--output`: Output file path (default: stdout)
 - `--all`: Fetch all pull requests from the repository
-- `--since`: Fetch PRs created after a specific date
-- `--until`: Fetch PRs created before a specific date
-- `--incremental`: Resume from the last successful fetch
+- `--since`: Fetch PRs created after a specific date (not implemented in Phase 1)
+- `--until`: Fetch PRs created before a specific date (not implemented in Phase 1)
+- `--incremental`: Resume from the last successful fetch (not implemented in Phase 1)
 
 ### Output
 

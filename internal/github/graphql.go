@@ -27,12 +27,19 @@ import (
 )
 
 // GraphQLClient implements the GitHub Client interface using GraphQL API.
+// It provides efficient access to GitHub's data with support for pagination,
+// error handling, and safety features like timeouts and response size limits.
 type GraphQLClient struct {
 	client *graphql.Client
 	token  string
 }
 
 // NewGraphQLClient creates a new GitHub GraphQL client with the provided token.
+// The client is configured with:
+//   - Authentication via the provided token
+//   - Automatic timeout handling (set at CLI level)
+//   - Response size limiting to prevent memory issues
+//   - User-Agent header for API compliance
 func NewGraphQLClient(token string) *GraphQLClient {
 	httpClient := &http.Client{
 		Transport: &authTransport{
@@ -50,6 +57,8 @@ func NewGraphQLClient(token string) *GraphQLClient {
 }
 
 // GetRepositoryInfo retrieves basic repository metadata including total PR count.
+// This is used to display progress information when fetching all pull requests.
+// It executes a minimal GraphQL query to get just the total count of PRs.
 func (c *GraphQLClient) GetRepositoryInfo(ctx context.Context, owner, repo string) (*RepositoryInfo, error) {
 	// Define minimal query for repository info
 	var query struct {
@@ -78,6 +87,9 @@ func (c *GraphQLClient) GetRepositoryInfo(ctx context.Context, owner, repo strin
 }
 
 // FetchPullRequests fetches a page of pull requests from the specified repository.
+// For Phase 1, this typically fetches a single page of up to 50 PRs. The method
+// supports pagination via the opts.After cursor for subsequent pages.
+// It returns a PullRequestPage containing the PRs and pagination information.
 func (c *GraphQLClient) FetchPullRequests(ctx context.Context, owner, repo string, opts FetchOptions) (*PullRequestPage, error) {
 	// Set default page size if not specified
 	pageSize := opts.PageSize

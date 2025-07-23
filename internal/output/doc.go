@@ -29,13 +29,13 @@
 //	    log.Fatal(err)
 //	}
 //	defer w.Close()
-//	
+//
 //	// Write records
 //	for _, record := range records {
 //	    if err := w.Write(record); err != nil {
 //	        log.Printf("Failed to write record: %v", err)
 //	    }
 //	}
-//	
+//
 //	fmt.Printf("Wrote %d records\n", w.Count())
 package output

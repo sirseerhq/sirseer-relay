@@ -295,4 +295,3 @@ func deepEqual(a, b interface{}) bool {
 		return a == b
 	}
 }
-

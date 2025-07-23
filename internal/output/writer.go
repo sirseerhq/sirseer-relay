@@ -67,7 +67,7 @@ func NewWriter(w io.Writer) *Writer {
 //	    log.Fatal(err)
 //	}
 //	defer w.Close()
-//	
+//
 //	w.Write(someData)
 func NewFileWriter(filename string) (*Writer, error) {
 	file, err := os.Create(filename)

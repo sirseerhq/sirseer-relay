@@ -28,7 +28,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// fetchCmd represents the fetch command
+// newFetchCommand creates the 'fetch' subcommand for the CLI.
+// This command fetches pull request data from a specified GitHub repository
+// and outputs it in NDJSON format. By default, it fetches only the first page
+// of pull requests (up to 50). Use the --all flag to fetch all pull requests.
 func newFetchCommand() *cobra.Command {
 	var (
 		token          string
@@ -74,7 +77,10 @@ Authentication is required via GitHub token:
 	return cmd
 }
 
-// runFetch executes the fetch command
+// runFetch executes the main fetch logic. It parses the repository argument,
+// validates the GitHub token, creates the output writer, and delegates to either
+// fetchFirstPage (default) or fetchAllPullRequests (with --all flag).
+// Returns an error if any step fails, which will be mapped to an appropriate exit code.
 func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile string, fetchAll bool) error {
 	// Parse repository argument
 	owner, repo, err := parseRepository(repoArg)
@@ -115,7 +121,10 @@ func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile string, fetchA
 	return fetchFirstPage(ctx, client, owner, repo, writer)
 }
 
-// parseRepository parses an org/repo string into owner and repo components
+// parseRepository parses a repository argument in the format "owner/repo"
+// into separate owner and repository name components. It validates that
+// both components are present and non-empty.
+// Example: "golang/go" returns ("golang", "go", nil)
 func parseRepository(repoArg string) (owner, repo string, err error) {
 	parts := strings.Split(repoArg, "/")
 	if len(parts) != 2 {
@@ -132,7 +141,10 @@ func parseRepository(repoArg string) (owner, repo string, err error) {
 	return owner, repo, nil
 }
 
-// getToken returns the GitHub token from flag or environment variable
+// getToken retrieves the GitHub authentication token. It first checks
+// the --token flag value, and if empty, falls back to the GITHUB_TOKEN
+// environment variable. This allows users flexibility in how they provide
+// authentication credentials.
 func getToken(flagToken string) string {
 	if flagToken != "" {
 		return flagToken
@@ -140,7 +152,10 @@ func getToken(flagToken string) string {
 	return os.Getenv("GITHUB_TOKEN")
 }
 
-// fetchFirstPage fetches only the first page of PRs (default behavior)
+// fetchFirstPage implements the Phase 1 functionality: fetching a single page
+// of pull requests (up to 50) from the repository. This is the default behavior
+// when the --all flag is not specified. It streams results directly to the output
+// writer to maintain low memory usage.
 func fetchFirstPage(ctx context.Context, client github.Client, owner, repo string, writer output.OutputWriter) error {
 	opts := github.FetchOptions{
 		PageSize: 50,
@@ -305,7 +320,12 @@ func updateProgress(current, total, pageNum int, startTime time.Time) {
 		current, total, percent, pageNum, eta)
 }
 
-// mapErrorToExitCode maps internal errors to appropriate exit codes
+// mapErrorToExitCode converts internal error types to appropriate shell exit codes.
+// This provides meaningful exit codes for scripting and automation:
+//   - 0: Success (no error)
+//   - 1: General error
+//   - 2: Authentication/authorization errors (invalid token, repo not found, rate limit)
+//   - 3: Network errors
 func mapErrorToExitCode(err error) int {
 	if err == nil {
 		return 0
