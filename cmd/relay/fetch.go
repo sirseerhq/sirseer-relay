@@ -31,9 +31,10 @@ import (
 // fetchCmd represents the fetch command
 func newFetchCommand() *cobra.Command {
 	var (
-		token      string
-		outputFile string
-		fetchAll   bool
+		token          string
+		outputFile     string
+		fetchAll       bool
+		requestTimeout int
 	)
 
 	cmd := &cobra.Command{
@@ -50,7 +51,7 @@ Authentication is required via GitHub token:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Create context with timeout
-			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(cmd.Context(), time.Duration(requestTimeout)*time.Second)
 			defer cancel()
 
 			return runFetch(ctx, args[0], token, outputFile, fetchAll)
@@ -60,6 +61,7 @@ Authentication is required via GitHub token:
 	// Define flags
 	cmd.Flags().StringVar(&token, "token", "", "GitHub personal access token (overrides GITHUB_TOKEN env var)")
 	cmd.Flags().StringVar(&outputFile, "output", "", "Output file path (default: stdout)")
+	cmd.Flags().IntVar(&requestTimeout, "request-timeout", 180, "Request timeout in seconds (default: 3 minutes)")
 
 	// Pagination flag
 	cmd.Flags().BoolVar(&fetchAll, "all", false, "Fetch all pull requests from the repository")
