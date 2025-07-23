@@ -152,7 +152,7 @@ func getToken(flagToken string) string {
 	return os.Getenv("GITHUB_TOKEN")
 }
 
-// fetchFirstPage implements the Phase 1 functionality: fetching a single page
+// fetchFirstPage fetches only the first page of pull requests (default behavior)
 // of pull requests (up to 50) from the repository. This is the default behavior
 // when the --all flag is not specified. It streams results directly to the output
 // writer to maintain low memory usage.
@@ -199,7 +199,17 @@ func fetchFirstPage(ctx context.Context, client github.Client, owner, repo strin
 	return nil
 }
 
-// fetchAllPullRequests fetches all PRs using pagination
+// fetchAllPullRequests orchestrates the complete extraction of all pull requests from a repository.
+// It implements an efficient pagination strategy that:
+//   - Fetches repository metadata to get the total PR count for progress tracking
+//   - Iterates through all pages using GraphQL cursor-based pagination
+//   - Streams each PR immediately to the output writer (no in-memory accumulation)
+//   - Displays real-time progress with percentage completion and ETA
+//   - Automatically recovers from GraphQL query complexity errors by reducing batch size
+//
+// The function maintains constant memory usage regardless of repository size by streaming
+// results directly to the output. This allows it to handle repositories with 100K+ PRs
+// while using less than 100MB of memory.
 func fetchAllPullRequests(ctx context.Context, client github.Client, owner, repo string, writer output.OutputWriter) error {
 	// First, get repository info for total PR count
 	repoInfo, err := client.GetRepositoryInfo(ctx, owner, repo)
@@ -263,7 +273,18 @@ func fetchAllPullRequests(ctx context.Context, client github.Client, owner, repo
 	return nil
 }
 
-// fetchWithComplexityRetry handles automatic retry with reduced batch size on complexity errors
+// fetchWithComplexityRetry implements intelligent retry logic for GraphQL query complexity errors.
+// GitHub's GraphQL API has complexity limits to prevent expensive queries. When a query exceeds
+// these limits, this function automatically retries with a smaller batch size.
+//
+// The retry strategy:
+//   - Detects GraphQL complexity errors using the ErrQueryComplexity sentinel error
+//   - Reduces the page size by half on each retry (down to a minimum of 5)
+//   - Retries up to 4 times before giving up
+//   - Preserves the reduced page size for subsequent requests to avoid repeated errors
+//
+// This approach ensures that the tool can handle repositories with complex PR data (many
+// reviews, comments, or files) by automatically adjusting to stay within API limits.
 func fetchWithComplexityRetry(ctx context.Context, client github.Client, owner, repo string, opts github.FetchOptions, pageSize *int) (*github.PullRequestPage, error) {
 	maxRetries := 4
 	minPageSize := 5
@@ -296,7 +317,18 @@ func fetchWithComplexityRetry(ctx context.Context, client github.Client, owner, 
 	return nil, fmt.Errorf("failed after %d attempts to reduce query complexity", maxRetries)
 }
 
-// updateProgress displays progress with percentage and ETA
+// updateProgress displays a real-time progress indicator with percentage completion and ETA.
+// It uses ANSI escape sequences to update the progress line in place, providing a smooth
+// user experience without scrolling the terminal.
+//
+// The progress indicator shows:
+//   - Current number of PRs processed vs total
+//   - Percentage completion with one decimal place
+//   - Current page number being processed
+//   - Estimated time to completion based on current processing rate
+//
+// The ETA calculation uses the elapsed time and current progress to extrapolate the
+// remaining time, providing users with a realistic expectation of completion time.
 func updateProgress(current, total, pageNum int, startTime time.Time) {
 	if total == 0 {
 		return

@@ -9,7 +9,10 @@ SirSeer Relay is a command-line tool that efficiently extracts comprehensive pul
 ## Features
 
 - **Efficient Data Extraction**: Fetches complete PR metadata including reviews, commits, and files
-- **Memory Optimized**: Streams data directly to disk, maintaining constant memory usage regardless of repository size
+- **Full Repository Fetching**: Extract all pull requests with automatic pagination
+- **Constant Memory Usage**: Streams data directly to disk, using less than 100MB regardless of repository size
+- **Live Progress Tracking**: Real-time progress indicator with percentage completion and ETA
+- **Automatic Query Recovery**: Intelligently handles GraphQL complexity limits by adjusting batch size
 - **Incremental Updates**: Resume from where you left off with built-in state management
 - **Enterprise Ready**: Supports GitHub Enterprise installations
 - **Cross-Platform**: Available for Linux, macOS, and Windows
@@ -44,10 +47,18 @@ export GITHUB_TOKEN=your_github_token
 ./sirseer-relay fetch organization/repository
 ```
 
-To fetch all pull requests from a repository:
+### Fetching All Pull Requests
+
+To fetch all pull requests from a repository with automatic pagination:
 
 ```bash
 ./sirseer-relay fetch organization/repository --all
+```
+
+This will display a real-time progress indicator:
+```
+Fetching all 12543 pull requests from kubernetes/kubernetes...
+Progress: 3250 / 12543 PRs [25.9%] | Page 65 | ETA: 2m15s
 ```
 
 ### Command Syntax
@@ -61,9 +72,10 @@ sirseer-relay fetch <org>/<repo> [flags]
 - `--token`: GitHub personal access token (overrides GITHUB_TOKEN env var)
 - `--output`: Output file path (default: stdout)
 - `--all`: Fetch all pull requests from the repository
-- `--since`: Fetch PRs created after a specific date (not implemented in Phase 1)
-- `--until`: Fetch PRs created before a specific date (not implemented in Phase 1)
-- `--incremental`: Resume from the last successful fetch (not implemented in Phase 1)
+- `--request-timeout`: Request timeout in seconds (default: 180, useful for large repos)
+- `--since`: Fetch PRs created after a specific date (not implemented yet)
+- `--until`: Fetch PRs created before a specific date (not implemented yet)
+- `--incremental`: Resume from the last successful fetch (not implemented yet)
 
 ### Output
 

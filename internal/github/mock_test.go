@@ -43,7 +43,7 @@ func TestMockClient_FetchPullRequests(t *testing.T) {
 		}
 
 		if page.HasNextPage {
-			t.Error("expected HasNextPage to be false for Phase 1")
+			t.Error("expected HasNextPage to be false by default")
 		}
 
 		// Verify call tracking

@@ -20,7 +20,8 @@ import "context"
 // This interface allows for easy mocking in tests.
 type Client interface {
 	// FetchPullRequests retrieves a page of pull requests from the specified repository.
-	// For Phase 1, this will fetch only the first page (up to 50 PRs).
+	// It supports cursor-based pagination through the opts.After parameter to fetch
+	// subsequent pages. The page size can be configured via opts.PageSize.
 	FetchPullRequests(ctx context.Context, owner, repo string, opts FetchOptions) (*PullRequestPage, error)
 
 	// GetRepositoryInfo retrieves basic repository metadata including total PR count.

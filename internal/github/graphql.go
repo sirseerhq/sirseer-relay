@@ -87,9 +87,9 @@ func (c *GraphQLClient) GetRepositoryInfo(ctx context.Context, owner, repo strin
 }
 
 // FetchPullRequests fetches a page of pull requests from the specified repository.
-// For Phase 1, this typically fetches a single page of up to 50 PRs. The method
-// supports pagination via the opts.After cursor for subsequent pages.
-// It returns a PullRequestPage containing the PRs and pagination information.
+// It supports cursor-based pagination via the opts.After parameter and configurable
+// page sizes through opts.PageSize. The method returns a PullRequestPage containing
+// the PRs and pagination information needed to fetch subsequent pages.
 func (c *GraphQLClient) FetchPullRequests(ctx context.Context, owner, repo string, opts FetchOptions) (*PullRequestPage, error) {
 	// Set default page size if not specified
 	pageSize := opts.PageSize
@@ -114,9 +114,9 @@ func (c *GraphQLClient) FetchPullRequests(ctx context.Context, owner, repo strin
 					ClosedAt  *time.Time
 					MergedAt  *time.Time
 					// Author is a nested object that adds to query complexity.
-					// For Phase 1, this minimal structure is fine, but when implementing
-					// pagination in Phase 2, consider flattening or reducing nested fields
-					// to stay within GitHub's GraphQL complexity limits.
+					// When fetching large batches, the query complexity may exceed
+					// GitHub's limits. The fetchWithComplexityRetry function handles
+					// this by automatically reducing the batch size.
 					Author struct {
 						Login graphql.String
 					} `graphql:"author"`

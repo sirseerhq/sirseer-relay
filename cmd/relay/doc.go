@@ -18,7 +18,10 @@
 //
 // The CLI supports:
 //   - Fetching a single page of pull requests (default behavior)
-//   - Fetching all pull requests with the --all flag
+//   - Fetching all pull requests with the --all flag (with pagination)
+//   - Real-time progress tracking with percentage and ETA
+//   - Automatic recovery from GraphQL query complexity errors
+//   - Configurable request timeouts for large repositories
 //   - Customizable output destinations (stdout or file)
 //   - GitHub token authentication via flag or environment variable
 //   - Graceful error handling with appropriate exit codes
@@ -31,6 +34,7 @@
 //
 //	export GITHUB_TOKEN=your_token
 //	sirseer-relay fetch golang/go --output prs.ndjson
+//	sirseer-relay fetch kubernetes/kubernetes --all --request-timeout 600
 //
 // Exit codes:
 //   - 0: Success

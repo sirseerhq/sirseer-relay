@@ -50,9 +50,8 @@ type PullRequestPage struct {
 }
 
 // FetchOptions configures how pull requests are fetched.
-// For Phase 1, this primarily controls the page size (default 50).
-// The After field enables cursor-based pagination for fetching
-// multiple pages in sequence.
+// It supports pagination through the After cursor field and
+// allows customization of the page size for each request.
 type FetchOptions struct {
 	// PageSize controls how many PRs to fetch per page.
 	// Defaults to 50 if not specified. Maximum is 100 per GitHub's API limits.
