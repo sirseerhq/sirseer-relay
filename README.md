@@ -91,6 +91,30 @@ github:
   graphql_endpoint: https://github.your-company.com/api/graphql
 ```
 
+## Contributing
+
+When contributing to this repository, please note that we use automated quality checks to maintain high standards.
+
+### Setup
+
+After cloning the repository, configure git to use our custom hooks:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+This enables automatic pre-commit checks that prevent common issues.
+
+### Before Pushing
+
+Run the pre-push validation script to ensure your changes meet all requirements:
+
+```bash
+./scripts/pre-push-check.sh
+```
+
+This script checks for code quality issues, runs tests, and validates that no internal development references are present.
+
 ## License
 
 This software is licensed under the Business Source License 1.1. See the [LICENSE](LICENSE) file for details.
