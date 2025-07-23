@@ -34,7 +34,7 @@ type PullRequest struct {
 
 // Author represents the author of a pull request.
 // Currently only includes the login name to minimize GraphQL query complexity.
-// Additional fields can be added in future phases if needed.
+// Additional fields can be added in future releases if needed.
 type Author struct {
 	Login string `json:"login"`
 }
