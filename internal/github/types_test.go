@@ -91,13 +91,13 @@ func TestPullRequestOptionalFields(t *testing.T) {
 	if jsonStr == "" {
 		t.Fatal("JSON string is empty")
 	}
-	
+
 	// These fields should be omitted when nil
 	var m map[string]interface{}
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatalf("Failed to unmarshal to map: %v", err)
 	}
-	
+
 	if _, exists := m["closed_at"]; exists {
 		t.Error("closed_at should be omitted when nil")
 	}

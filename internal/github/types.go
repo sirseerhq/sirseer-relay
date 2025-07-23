@@ -47,7 +47,7 @@ type FetchOptions struct {
 	// PageSize controls how many PRs to fetch per page.
 	// For Phase 1, this is not user-configurable.
 	PageSize int
-	
+
 	// Cursor is used for pagination in future phases.
 	// For Phase 1, this will always be empty.
 	Cursor string
