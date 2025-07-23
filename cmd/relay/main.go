@@ -42,3 +42,4 @@ of any size while maintaining low memory usage through streaming architecture.`,
 		os.Exit(mapErrorToExitCode(err))
 	}
 }
+

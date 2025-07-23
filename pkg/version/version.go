@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package version provides build version information for sirseer-relay.
+// The version is typically set at build time using ldflags.
 package version
 
 // Version is the current version of sirseer-relay.
 // This is set at build time using ldflags.
 var Version = "dev"
+
