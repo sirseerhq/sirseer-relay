@@ -26,22 +26,22 @@ func TestWriterImplementsInterface(t *testing.T) {
 	// This test ensures our NDJSON Writer satisfies the OutputWriter interface
 	buf := &bytes.Buffer{}
 	writer := NewWriter(buf)
-	
+
 	// Test that we can use it as an OutputWriter
 	var w OutputWriter = writer
-	
+
 	// Test Write method
 	err := w.Write(map[string]string{"test": "data"})
 	if err != nil {
 		t.Errorf("Write() error = %v", err)
 	}
-	
+
 	// Test Close method
 	err = w.Close()
 	if err != nil {
 		t.Errorf("Close() error = %v", err)
 	}
-	
+
 	// Verify data was written
 	if buf.Len() == 0 {
 		t.Error("Expected data to be written to buffer")

@@ -205,14 +205,14 @@ func TestNewFileWriter(t *testing.T) {
 	}
 
 	for _, record := range testRecords {
-		if err := writer.Write(record); err != nil {
-			t.Fatalf("Write failed: %v", err)
+		if wErr := writer.Write(record); wErr != nil {
+			t.Fatalf("Write failed: %v", wErr)
 		}
 	}
 
 	// Close the writer
-	if err := writer.Close(); err != nil {
-		t.Fatalf("Close failed: %v", err)
+	if cErr := writer.Close(); cErr != nil {
+		t.Fatalf("Close failed: %v", cErr)
 	}
 
 	// Read and verify file contents

@@ -25,10 +25,10 @@ import (
 // Writer handles streaming NDJSON output to a file or io.Writer.
 // It ensures memory-efficient writing without accumulating data.
 type Writer struct {
-	mu       sync.Mutex
-	output   io.Writer
-	encoder  *json.Encoder
-	count    int
+	mu        sync.Mutex
+	output    io.Writer
+	encoder   *json.Encoder
+	count     int
 	closeFunc func() error
 }
 
