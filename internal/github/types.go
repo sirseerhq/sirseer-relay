@@ -52,6 +52,7 @@ type PullRequestPage struct {
 // FetchOptions configures how pull requests are fetched.
 // It supports pagination through the After cursor field and
 // allows customization of the page size for each request.
+// Time window filtering is supported through Since and Until fields.
 type FetchOptions struct {
 	// PageSize controls how many PRs to fetch per page.
 	// Defaults to 50 if not specified. Maximum is 100 per GitHub's API limits.
@@ -61,6 +62,19 @@ type FetchOptions struct {
 	// Empty string fetches from the beginning.
 	// Use PullRequestPage.EndCursor from previous response for next page.
 	After string
+
+	// Since filters PRs created after this date (inclusive).
+	// When nil, no lower bound is applied.
+	Since *time.Time
+
+	// Until filters PRs created before this date (inclusive).
+	// When nil, no upper bound is applied.
+	Until *time.Time
+
+	// Query is the raw GitHub search query to use.
+	// If provided, it overrides the default query construction.
+	// This allows for advanced filtering beyond date ranges.
+	Query string
 }
 
 // Default values for fetch operations

@@ -150,7 +150,7 @@ func TestRunFetch_MockClient(t *testing.T) {
 			}
 
 			// Run the fetch
-			err := runFetch(context.Background(), tt.repoArg, tt.token, tt.outputFile, false)
+			err := runFetch(context.Background(), tt.repoArg, tt.token, tt.outputFile, false, "", "", false)
 
 			// Check error
 			if (err != nil) != tt.wantErr {

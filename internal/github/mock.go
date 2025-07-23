@@ -153,6 +153,13 @@ func (m *MockClient) checkErrors(owner, repo string) error {
 	return m.Error
 }
 
+// FetchPullRequestsSearch implements the Client interface
+func (m *MockClient) FetchPullRequestsSearch(ctx context.Context, owner, repo string, opts FetchOptions) (*PullRequestPage, error) {
+	// For the mock, just delegate to FetchPullRequests
+	// In real implementation, this would use the search API with date filtering
+	return m.FetchPullRequests(ctx, owner, repo, opts)
+}
+
 func (m *MockClient) getPaginatedPage(opts FetchOptions) (*PullRequestPage, error) {
 	// Calculate pagination based on cursor
 	startIdx := 0

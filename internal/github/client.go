@@ -22,7 +22,14 @@ type Client interface {
 	// FetchPullRequests retrieves a page of pull requests from the specified repository.
 	// It supports cursor-based pagination through the opts.After parameter to fetch
 	// subsequent pages. The page size can be configured via opts.PageSize.
+	// DEPRECATED: Use FetchPullRequestsSearch for date filtering and chronological ordering.
 	FetchPullRequests(ctx context.Context, owner, repo string, opts FetchOptions) (*PullRequestPage, error)
+
+	// FetchPullRequestsSearch retrieves pull requests using GitHub's search API.
+	// This method supports date filtering through opts.Since and opts.Until,
+	// and always returns PRs in chronological order (CREATED_AT ASC).
+	// It's the preferred method for fetching PRs with time windows or incremental updates.
+	FetchPullRequestsSearch(ctx context.Context, owner, repo string, opts FetchOptions) (*PullRequestPage, error)
 
 	// GetRepositoryInfo retrieves basic repository metadata including total PR count.
 	// Used for progress tracking and ETA calculation.
