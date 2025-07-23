@@ -49,6 +49,34 @@ func NewGraphQLClient(token string) *GraphQLClient {
 	}
 }
 
+// GetRepositoryInfo retrieves basic repository metadata including total PR count.
+func (c *GraphQLClient) GetRepositoryInfo(ctx context.Context, owner, repo string) (*RepositoryInfo, error) {
+	// Define minimal query for repository info
+	var query struct {
+		Repository struct {
+			PullRequests struct {
+				TotalCount graphql.Int
+			} `graphql:"pullRequests"`
+		} `graphql:"repository(owner: $owner, name: $repo)"`
+	}
+
+	// Set up variables
+	variables := map[string]interface{}{
+		"owner": graphql.String(owner),
+		"repo":  graphql.String(repo),
+	}
+
+	// Execute the query
+	err := c.client.Query(ctx, &query, variables)
+	if err != nil {
+		return nil, c.mapError(err, owner, repo)
+	}
+
+	return &RepositoryInfo{
+		TotalPullRequests: int(query.Repository.PullRequests.TotalCount),
+	}, nil
+}
+
 // FetchPullRequests fetches a page of pull requests from the specified repository.
 func (c *GraphQLClient) FetchPullRequests(ctx context.Context, owner, repo string, opts FetchOptions) (*PullRequestPage, error) {
 	// Set default page size if not specified
@@ -81,7 +109,7 @@ func (c *GraphQLClient) FetchPullRequests(ctx context.Context, owner, repo strin
 						Login graphql.String
 					} `graphql:"author"`
 				}
-			} `graphql:"pullRequests(first: $first, orderBy: {field: UPDATED_AT, direction: DESC})"`
+			} `graphql:"pullRequests(first: $first, after: $after, orderBy: {field: UPDATED_AT, direction: DESC})"`
 		} `graphql:"repository(owner: $owner, name: $repo)"`
 	}
 
@@ -92,6 +120,11 @@ func (c *GraphQLClient) FetchPullRequests(ctx context.Context, owner, repo strin
 		"owner": graphql.String(owner),
 		"repo":  graphql.String(repo),
 		"first": graphql.Int(int32(pageSize)), // #nosec G115 - pageSize is capped at 100
+	}
+
+	// Add after cursor if provided
+	if opts.After != "" {
+		variables["after"] = graphql.String(opts.After)
 	}
 
 	// Execute the query
@@ -141,28 +174,53 @@ func (c *GraphQLClient) mapError(err error, owner, repo string) error {
 
 	errStr := err.Error()
 
-	// Check for authentication errors
-	if contains(errStr, "401") || contains(errStr, "403") || contains(errStr, "unauthorized") || contains(errStr, "forbidden") {
+	// Check each error type
+	if isAuthError(errStr) {
 		return fmt.Errorf("GitHub API authentication failed. Please provide a valid token via --token flag or GITHUB_TOKEN environment variable: %w", relaierrors.ErrInvalidToken)
 	}
 
-	// Check for not found errors
-	if contains(errStr, "404") || contains(errStr, "not found") || contains(errStr, "Could not resolve to a Repository") {
+	if isNotFoundError(errStr) {
 		return fmt.Errorf("repository '%s/%s' not found. Please check the repository name and your access permissions: %w", owner, repo, relaierrors.ErrRepoNotFound)
 	}
 
-	// Check for rate limit errors
-	if contains(errStr, "rate limit") || contains(errStr, "429") {
+	if isRateLimitError(errStr) {
 		return fmt.Errorf("GitHub API rate limit exceeded. Please wait before retrying: %w", relaierrors.ErrRateLimit)
 	}
 
-	// Check for network errors
-	if contains(errStr, "connection refused") || contains(errStr, "no such host") || contains(errStr, "timeout") {
+	if isComplexityError(errStr) {
+		return fmt.Errorf("GraphQL query complexity exceeded. Reducing batch size may help: %w", relaierrors.ErrQueryComplexity)
+	}
+
+	if isNetworkError(errStr) {
 		return fmt.Errorf("network error connecting to GitHub API. Please check your internet connection and try again: %w", relaierrors.ErrNetworkFailure)
 	}
 
 	// Generic error
 	return fmt.Errorf("failed to fetch pull requests: %w", err)
+}
+
+func isAuthError(errStr string) bool {
+	return contains(errStr, "401") || contains(errStr, "403") ||
+		contains(errStr, "unauthorized") || contains(errStr, "forbidden")
+}
+
+func isNotFoundError(errStr string) bool {
+	return contains(errStr, "404") || contains(errStr, "not found") ||
+		contains(errStr, "Could not resolve to a Repository")
+}
+
+func isRateLimitError(errStr string) bool {
+	return contains(errStr, "rate limit") || contains(errStr, "429")
+}
+
+func isComplexityError(errStr string) bool {
+	return contains(errStr, "complexity") || contains(errStr, "Query has complexity") ||
+		contains(errStr, "exceeds maximum")
+}
+
+func isNetworkError(errStr string) bool {
+	return contains(errStr, "connection refused") || contains(errStr, "no such host") ||
+		contains(errStr, "timeout")
 }
 
 // authTransport adds authentication header and safety limits to HTTP requests

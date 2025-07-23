@@ -33,6 +33,7 @@ func newFetchCommand() *cobra.Command {
 	var (
 		token      string
 		outputFile string
+		fetchAll   bool
 	)
 
 	cmd := &cobra.Command{
@@ -52,7 +53,7 @@ Authentication is required via GitHub token:
 			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 			defer cancel()
 
-			return runFetch(ctx, args[0], token, outputFile)
+			return runFetch(ctx, args[0], token, outputFile, fetchAll)
 		},
 	}
 
@@ -60,8 +61,10 @@ Authentication is required via GitHub token:
 	cmd.Flags().StringVar(&token, "token", "", "GitHub personal access token (overrides GITHUB_TOKEN env var)")
 	cmd.Flags().StringVar(&outputFile, "output", "", "Output file path (default: stdout)")
 
-	// Future flags (not implemented in Phase 1)
-	cmd.Flags().Bool("all", false, "Fetch all pull requests")
+	// Pagination flag
+	cmd.Flags().BoolVar(&fetchAll, "all", false, "Fetch all pull requests from the repository")
+
+	// Future flags (not implemented yet)
 	cmd.Flags().String("since", "", "Fetch PRs created after this date")
 	cmd.Flags().String("until", "", "Fetch PRs created before this date")
 	cmd.Flags().Bool("incremental", false, "Resume from last fetch")
@@ -70,7 +73,7 @@ Authentication is required via GitHub token:
 }
 
 // runFetch executes the fetch command
-func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile string) error {
+func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile string, fetchAll bool) error {
 	// Parse repository argument
 	owner, repo, err := parseRepository(repoArg)
 	if err != nil {
@@ -101,9 +104,44 @@ func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile string) error 
 	// Create GitHub client
 	client := github.NewGraphQLClient(token)
 
-	// Prepare fetch options
+	// Fetch all PRs if --all flag is set
+	if fetchAll {
+		return fetchAllPullRequests(ctx, client, owner, repo, writer)
+	}
+
+	// Default behavior: fetch first page only
+	return fetchFirstPage(ctx, client, owner, repo, writer)
+}
+
+// parseRepository parses an org/repo string into owner and repo components
+func parseRepository(repoArg string) (owner, repo string, err error) {
+	parts := strings.Split(repoArg, "/")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid repository format. Expected: <org>/<repo>, got: %s", repoArg)
+	}
+
+	owner = strings.TrimSpace(parts[0])
+	repo = strings.TrimSpace(parts[1])
+
+	if owner == "" || repo == "" {
+		return "", "", fmt.Errorf("invalid repository format. Expected: <org>/<repo>, got: %s", repoArg)
+	}
+
+	return owner, repo, nil
+}
+
+// getToken returns the GitHub token from flag or environment variable
+func getToken(flagToken string) string {
+	if flagToken != "" {
+		return flagToken
+	}
+	return os.Getenv("GITHUB_TOKEN")
+}
+
+// fetchFirstPage fetches only the first page of PRs (default behavior)
+func fetchFirstPage(ctx context.Context, client github.Client, owner, repo string, writer output.OutputWriter) error {
 	opts := github.FetchOptions{
-		PageSize: 50, // Phase 1: single page only
+		PageSize: 50,
 	}
 
 	// Show progress
@@ -132,39 +170,137 @@ func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile string) error 
 	// Final message
 	fmt.Fprintf(os.Stderr, "\r\033[K") // Clear progress line
 
-	if outputFile != "" {
-		fmt.Fprintf(os.Stderr, "Successfully wrote %d pull requests to %s\n", prCount, outputFile)
-	} else if prCount == 0 {
-		// For stdout, just clear the line - data is already written
+	// Check if we were writing to a file or stdout
+	// We can detect this based on whether an output file was specified in the original call
+	// For now, we'll just display a generic success message
+	if prCount > 0 {
+		fmt.Fprintf(os.Stderr, "Successfully fetched %d pull requests\n", prCount)
+	} else {
 		fmt.Fprintf(os.Stderr, "No pull requests found in %s/%s\n", owner, repo)
 	}
 
 	return nil
 }
 
-// parseRepository parses an org/repo string into owner and repo components
-func parseRepository(repoArg string) (owner, repo string, err error) {
-	parts := strings.Split(repoArg, "/")
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid repository format. Expected: <org>/<repo>, got: %s", repoArg)
+// fetchAllPullRequests fetches all PRs using pagination
+func fetchAllPullRequests(ctx context.Context, client github.Client, owner, repo string, writer output.OutputWriter) error {
+	// First, get repository info for total PR count
+	repoInfo, err := client.GetRepositoryInfo(ctx, owner, repo)
+	if err != nil {
+		return fmt.Errorf("failed to get repository info: %w", err)
 	}
 
-	owner = strings.TrimSpace(parts[0])
-	repo = strings.TrimSpace(parts[1])
-
-	if owner == "" || repo == "" {
-		return "", "", fmt.Errorf("invalid repository format. Expected: <org>/<repo>, got: %s", repoArg)
+	totalPRs := repoInfo.TotalPullRequests
+	if totalPRs == 0 {
+		fmt.Fprintf(os.Stderr, "No pull requests found in %s/%s\n", owner, repo)
+		return nil
 	}
 
-	return owner, repo, nil
+	// Initialize progress tracking
+	var (
+		allPRsProcessed = 0
+		cursor          = ""
+		hasMore         = true
+		startTime       = time.Now()
+		pageSize        = 50
+		pageNum         = 0
+	)
+
+	// Show initial progress
+	fmt.Fprintf(os.Stderr, "Fetching all %d pull requests from %s/%s...\n", totalPRs, owner, repo)
+
+	for hasMore {
+		pageNum++
+		opts := github.FetchOptions{
+			PageSize: pageSize,
+			After:    cursor,
+		}
+
+		// Fetch page with retry on complexity errors
+		page, err := fetchWithComplexityRetry(ctx, client, owner, repo, opts, &pageSize)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "\r\033[K") // Clear progress line
+			return err
+		}
+
+		// Stream PRs immediately
+		for _, pr := range page.PullRequests {
+			if err := writer.Write(pr); err != nil {
+				return fmt.Errorf("failed to write PR: %w", err)
+			}
+			allPRsProcessed++
+
+			// Update progress with ETA
+			updateProgress(allPRsProcessed, totalPRs, pageNum, startTime)
+		}
+
+		cursor = page.EndCursor
+		hasMore = page.HasNextPage
+	}
+
+	// Final message
+	fmt.Fprintf(os.Stderr, "\r\033[K") // Clear progress line
+	elapsed := time.Since(startTime)
+	fmt.Fprintf(os.Stderr, "Successfully fetched all %d pull requests in %s\n", allPRsProcessed, elapsed.Round(time.Second))
+
+	return nil
 }
 
-// getToken returns the GitHub token from flag or environment variable
-func getToken(flagToken string) string {
-	if flagToken != "" {
-		return flagToken
+// fetchWithComplexityRetry handles automatic retry with reduced batch size on complexity errors
+func fetchWithComplexityRetry(ctx context.Context, client github.Client, owner, repo string, opts github.FetchOptions, pageSize *int) (*github.PullRequestPage, error) {
+	maxRetries := 4
+	minPageSize := 5
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		opts.PageSize = *pageSize
+		page, err := client.FetchPullRequests(ctx, owner, repo, opts)
+
+		if err == nil {
+			return page, nil
+		}
+
+		// Check if it's a complexity error
+		if errors.Is(err, relaierrors.ErrQueryComplexity) && *pageSize > minPageSize {
+			// Reduce page size by half
+			*pageSize /= 2
+			if *pageSize < minPageSize {
+				*pageSize = minPageSize
+			}
+
+			fmt.Fprintf(os.Stderr, "\r\033[K") // Clear line
+			fmt.Fprintf(os.Stderr, "Query complexity limit hit. Reducing page size to %d...\n", *pageSize)
+			continue
+		}
+
+		// Not a complexity error or can't reduce further
+		return nil, err
 	}
-	return os.Getenv("GITHUB_TOKEN")
+
+	return nil, fmt.Errorf("failed after %d attempts to reduce query complexity", maxRetries)
+}
+
+// updateProgress displays progress with percentage and ETA
+func updateProgress(current, total, pageNum int, startTime time.Time) {
+	if total == 0 {
+		return
+	}
+
+	percent := float64(current) * 100 / float64(total)
+	elapsed := time.Since(startTime)
+
+	// Calculate ETA
+	var eta string
+	if current > 0 {
+		totalTime := elapsed.Seconds() * float64(total) / float64(current)
+		remaining := time.Duration(totalTime-elapsed.Seconds()) * time.Second
+
+		if remaining > 0 {
+			eta = fmt.Sprintf(" | ETA: %s", remaining.Round(time.Second))
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "\rProgress: %d / %d PRs [%.1f%%] | Page %d%s",
+		current, total, percent, pageNum, eta)
 }
 
 // mapErrorToExitCode maps internal errors to appropriate exit codes

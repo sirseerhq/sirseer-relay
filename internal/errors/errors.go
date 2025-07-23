@@ -35,4 +35,9 @@ var (
 	// ErrRateLimit indicates GitHub API rate limit has been exceeded.
 	// Maps to exit code 2.
 	ErrRateLimit = errors.New("github rate limit exceeded")
+
+	// ErrQueryComplexity indicates the GraphQL query exceeded complexity limits.
+	// This typically happens with large repositories and requires reducing batch size.
+	// Maps to exit code 1 (handled internally with retry).
+	ErrQueryComplexity = errors.New("graphql query complexity exceeded")
 )

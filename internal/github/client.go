@@ -22,4 +22,8 @@ type Client interface {
 	// FetchPullRequests retrieves a page of pull requests from the specified repository.
 	// For Phase 1, this will fetch only the first page (up to 50 PRs).
 	FetchPullRequests(ctx context.Context, owner, repo string, opts FetchOptions) (*PullRequestPage, error)
+
+	// GetRepositoryInfo retrieves basic repository metadata including total PR count.
+	// Used for progress tracking and ETA calculation.
+	GetRepositoryInfo(ctx context.Context, owner, repo string) (*RepositoryInfo, error)
 }

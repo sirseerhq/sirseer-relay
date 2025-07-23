@@ -40,13 +40,54 @@ type MockClient struct {
 	LastOwner string
 	LastRepo  string
 	LastOpts  FetchOptions
+
+	// Pagination support
+	TotalPullRequests int
+	PageSize          int
+	SimulatePages     bool
 }
 
 // NewMockClient creates a new mock client with default test data
 func NewMockClient() *MockClient {
+	prs := generateTestPRs()
 	return &MockClient{
-		PullRequests: generateTestPRs(),
+		PullRequests:      prs,
+		TotalPullRequests: len(prs),
+		PageSize:          50,
 	}
+}
+
+// GetRepositoryInfo implements the Client interface
+func (m *MockClient) GetRepositoryInfo(ctx context.Context, owner, repo string) (*RepositoryInfo, error) {
+	// Check for context cancellation
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	// Simulate error conditions
+	if m.ShouldFailAuth {
+		return nil, fmt.Errorf("authentication failed: %w", relaierrors.ErrInvalidToken)
+	}
+
+	if m.ShouldFailNetwork {
+		return nil, fmt.Errorf("network timeout: %w", relaierrors.ErrNetworkFailure)
+	}
+
+	const nonexistentRepoName = "repo"
+	if m.ShouldFailNotFound || (owner == "nonexistent" && repo == nonexistentRepoName) {
+		return nil, fmt.Errorf("repository not found: %w", relaierrors.ErrRepoNotFound)
+	}
+
+	// Return configured error if set
+	if m.Error != nil {
+		return nil, m.Error
+	}
+
+	return &RepositoryInfo{
+		TotalPullRequests: m.TotalPullRequests,
+	}, nil
 }
 
 // FetchPullRequests implements the Client interface
@@ -64,32 +105,80 @@ func (m *MockClient) FetchPullRequests(ctx context.Context, owner, repo string, 
 	default:
 	}
 
+	// Check for errors
+	if err := m.checkErrors(owner, repo); err != nil {
+		return nil, err
+	}
+
+	// Handle pagination if enabled
+	if m.SimulatePages && m.PageSize > 0 {
+		return m.getPaginatedPage(opts)
+	}
+
+	// Default behavior: return all PRs in one page
+	return &PullRequestPage{
+		PullRequests: m.PullRequests,
+		HasNextPage:  false,
+		EndCursor:    "",
+	}, nil
+}
+
+func (m *MockClient) checkErrors(owner, repo string) error {
 	// Simulate various error conditions
 	if m.ShouldFailAuth {
-		return nil, fmt.Errorf("authentication failed: %w", relaierrors.ErrInvalidToken)
+		return fmt.Errorf("authentication failed: %w", relaierrors.ErrInvalidToken)
 	}
 
 	if m.ShouldFailNetwork {
-		return nil, fmt.Errorf("network timeout: %w", relaierrors.ErrNetworkFailure)
+		return fmt.Errorf("network timeout: %w", relaierrors.ErrNetworkFailure)
 	}
 
-	if m.ShouldFailNotFound || (owner == "nonexistent" && repo == "repo") {
-		return nil, fmt.Errorf("repository not found: %w", relaierrors.ErrRepoNotFound)
+	const nonexistentRepoName = "repo"
+	if m.ShouldFailNotFound || (owner == "nonexistent" && repo == nonexistentRepoName) {
+		return fmt.Errorf("repository not found: %w", relaierrors.ErrRepoNotFound)
 	}
 
 	// Return configured error if set
-	if m.Error != nil {
-		return nil, m.Error
+	return m.Error
+}
+
+func (m *MockClient) getPaginatedPage(opts FetchOptions) (*PullRequestPage, error) {
+	// Calculate pagination based on cursor
+	startIdx := 0
+	if opts.After != "" {
+		// Simple cursor implementation: cursor is the index
+		// Ignore error as we have a default startIdx of 0
+		if n, err := fmt.Sscanf(opts.After, "cursor_%d", &startIdx); err != nil || n != 1 {
+			startIdx = 0 // Use default on parse error
+		}
 	}
 
-	// Return the mock data
-	page := &PullRequestPage{
-		PullRequests: m.PullRequests,
-		HasNextPage:  false, // Phase 1 only fetches one page
-		EndCursor:    "",
+	pageSize := opts.PageSize
+	if pageSize <= 0 {
+		pageSize = m.PageSize
 	}
 
-	return page, nil
+	endIdx := startIdx + pageSize
+	if endIdx > len(m.PullRequests) {
+		endIdx = len(m.PullRequests)
+	}
+
+	prs := []PullRequest{}
+	if startIdx < len(m.PullRequests) {
+		prs = m.PullRequests[startIdx:endIdx]
+	}
+
+	hasNext := endIdx < len(m.PullRequests)
+	cursor := ""
+	if hasNext {
+		cursor = fmt.Sprintf("cursor_%d", endIdx)
+	}
+
+	return &PullRequestPage{
+		PullRequests: prs,
+		HasNextPage:  hasNext,
+		EndCursor:    cursor,
+	}, nil
 }
 
 // generateTestPRs creates sample pull request data for testing
@@ -137,6 +226,15 @@ type MockClientOption func(*MockClient)
 func WithPullRequests(prs []PullRequest) MockClientOption {
 	return func(m *MockClient) {
 		m.PullRequests = prs
+		m.TotalPullRequests = len(prs)
+	}
+}
+
+// WithPagination enables pagination simulation with the given page size
+func WithPagination(pageSize int) MockClientOption {
+	return func(m *MockClient) {
+		m.SimulatePages = true
+		m.PageSize = pageSize
 	}
 }
 

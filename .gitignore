@@ -57,3 +57,6 @@ test-output/
 # Temporary files
 tmp/
 temp/
+
+# Benchmark outputs
+benchmarks/

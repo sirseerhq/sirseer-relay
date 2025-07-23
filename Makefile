@@ -95,6 +95,15 @@ bench:
 	@echo "Running benchmarks..."
 	$(GO) test -bench=. -benchmem ./...
 
+# Memory benchmark for large repository fetch
+.PHONY: benchmark
+benchmark: build
+	@echo "Running memory benchmark on kubernetes/kubernetes..."
+	@mkdir -p benchmarks
+	/usr/bin/time -v ./sirseer-relay fetch kubernetes/kubernetes --all --output benchmarks/k8s-prs.ndjson 2>&1 | tee benchmarks/memory-report.txt
+	@echo "Benchmark complete. Check benchmarks/memory-report.txt for details."
+	@grep "Maximum resident set size" benchmarks/memory-report.txt
+
 # Build for multiple platforms
 .PHONY: build-all
 build-all:
@@ -122,5 +131,6 @@ help:
 	@echo "  clean          - Remove build artifacts"
 	@echo "  deps           - Install dependencies"
 	@echo "  bench          - Run benchmarks"
+	@echo "  benchmark      - Run memory benchmark on kubernetes/kubernetes"
 	@echo "  build-all      - Build for multiple platforms"
 	@echo "  help           - Show this help message"

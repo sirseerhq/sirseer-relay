@@ -17,6 +17,7 @@ package github
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -186,5 +187,153 @@ func TestGenerateTestPRs(t *testing.T) {
 		if pr.UpdatedAt.Before(pr.CreatedAt) {
 			t.Errorf("PR %d: UpdatedAt is before CreatedAt", i)
 		}
+	}
+}
+
+func TestMockClient_Pagination(t *testing.T) {
+	// Create test PRs for pagination
+	testPRs := make([]PullRequest, 0, 150)
+	for i := 1; i <= 150; i++ {
+		testPRs = append(testPRs, PullRequest{
+			Number:    i,
+			Title:     fmt.Sprintf("PR %d", i),
+			State:     "open",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			Author:    Author{Login: "test"},
+		})
+	}
+
+	tests := []struct {
+		name          string
+		pageSize      int
+		totalPRs      []PullRequest
+		expectedPages int
+	}{
+		{
+			name:          "multiple full pages",
+			pageSize:      50,
+			totalPRs:      testPRs[:100], // Exactly 2 pages
+			expectedPages: 2,
+		},
+		{
+			name:          "last page partial",
+			pageSize:      50,
+			totalPRs:      testPRs[:75], // 1.5 pages
+			expectedPages: 2,
+		},
+		{
+			name:          "single page",
+			pageSize:      50,
+			totalPRs:      testPRs[:30], // Less than 1 page
+			expectedPages: 1,
+		},
+		{
+			name:          "small page size",
+			pageSize:      10,
+			totalPRs:      testPRs[:25], // 2.5 pages
+			expectedPages: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := NewMockClientWithOptions(
+				WithPullRequests(tt.totalPRs),
+				WithPagination(tt.pageSize),
+			)
+
+			var allPRs []PullRequest
+			cursor := ""
+			pages := 0
+
+			for {
+				page, err := mock.FetchPullRequests(context.Background(), "test", "repo", FetchOptions{
+					PageSize: tt.pageSize,
+					After:    cursor,
+				})
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+
+				allPRs = append(allPRs, page.PullRequests...)
+				pages++
+
+				if !page.HasNextPage {
+					break
+				}
+				cursor = page.EndCursor
+			}
+
+			// Verify we got all PRs
+			if len(allPRs) != len(tt.totalPRs) {
+				t.Errorf("got %d PRs, want %d", len(allPRs), len(tt.totalPRs))
+			}
+
+			// Verify page count
+			if pages != tt.expectedPages {
+				t.Errorf("got %d pages, want %d", pages, tt.expectedPages)
+			}
+
+			// Verify PRs are in order
+			for i, pr := range allPRs {
+				if pr.Number != tt.totalPRs[i].Number {
+					t.Errorf("PR at index %d has number %d, want %d", i, pr.Number, tt.totalPRs[i].Number)
+				}
+			}
+		})
+	}
+}
+
+func TestMockClient_GetRepositoryInfo(t *testing.T) {
+	tests := []struct {
+		name      string
+		mock      *MockClient
+		wantTotal int
+		wantErr   bool
+	}{
+		{
+			name:      "default mock",
+			mock:      NewMockClient(),
+			wantTotal: 3, // Default has 3 PRs
+			wantErr:   false,
+		},
+		{
+			name: "custom total",
+			mock: &MockClient{
+				TotalPullRequests: 12345,
+			},
+			wantTotal: 12345,
+			wantErr:   false,
+		},
+		{
+			name: "auth failure",
+			mock: &MockClient{
+				ShouldFailAuth: true,
+			},
+			wantErr: true,
+		},
+		{
+			name: "network failure",
+			mock: &MockClient{
+				ShouldFailNetwork: true,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info, err := tt.mock.GetRepositoryInfo(context.Background(), "test", "repo")
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetRepositoryInfo() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr && info.TotalPullRequests != tt.wantTotal {
+				t.Errorf("got total %d, want %d", info.TotalPullRequests, tt.wantTotal)
+			}
+		})
 	}
 }
