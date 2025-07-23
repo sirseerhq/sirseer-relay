@@ -26,15 +26,15 @@ import (
 type MockClient struct {
 	// PullRequests to return
 	PullRequests []PullRequest
-	
+
 	// Error to return
 	Error error
-	
+
 	// Behavior flags
-	ShouldFailAuth    bool
-	ShouldFailNetwork bool
+	ShouldFailAuth     bool
+	ShouldFailNetwork  bool
 	ShouldFailNotFound bool
-	
+
 	// Track calls for verification
 	CallCount int
 	LastOwner string
@@ -56,39 +56,39 @@ func (m *MockClient) FetchPullRequests(ctx context.Context, owner, repo string, 
 	m.LastOwner = owner
 	m.LastRepo = repo
 	m.LastOpts = opts
-	
+
 	// Check for context cancellation
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
 	}
-	
+
 	// Simulate various error conditions
 	if m.ShouldFailAuth {
 		return nil, fmt.Errorf("authentication failed: %w", relaierrors.ErrInvalidToken)
 	}
-	
+
 	if m.ShouldFailNetwork {
 		return nil, fmt.Errorf("network timeout: %w", relaierrors.ErrNetworkFailure)
 	}
-	
+
 	if m.ShouldFailNotFound || (owner == "nonexistent" && repo == "repo") {
 		return nil, fmt.Errorf("repository not found: %w", relaierrors.ErrRepoNotFound)
 	}
-	
+
 	// Return configured error if set
 	if m.Error != nil {
 		return nil, m.Error
 	}
-	
+
 	// Return the mock data
 	page := &PullRequestPage{
 		PullRequests: m.PullRequests,
 		HasNextPage:  false, // Phase 1 only fetches one page
 		EndCursor:    "",
 	}
-	
+
 	return page, nil
 }
 
@@ -97,9 +97,9 @@ func generateTestPRs() []PullRequest {
 	now := time.Now().UTC()
 	yesterday := now.Add(-24 * time.Hour)
 	lastWeek := now.Add(-7 * 24 * time.Hour)
-	
+
 	merged := yesterday
-	
+
 	return []PullRequest{
 		{
 			Number:    1234,
