@@ -1,0 +1,126 @@
+# golangci-lint configuration for sirseer-relay
+# This configuration ensures enterprise-grade code quality
+
+linters:
+  enable:
+    - errcheck      # Check for unchecked errors
+    - gosimple      # Simplify code
+    - govet         # Report suspicious constructs
+    - ineffassign   # Detect ineffectual assignments
+    - staticcheck   # Static analysis
+    - typecheck     # Type checking
+    - unused        # Find unused code
+    - gosec         # Security checks
+    - gofmt         # Check formatting
+    - goimports     # Check imports
+    - misspell      # Find misspelled words
+    - unconvert     # Remove unnecessary type conversions
+    - prealloc      # Find slice declarations that could be preallocated
+    - nakedret      # Find naked returns
+    - gocyclo       # Check cyclomatic complexity
+    - dupl          # Find duplicated code
+    - goconst       # Find repeated strings that could be constants
+    - gocritic      # Various checks
+
+linters-settings:
+  errcheck:
+    # Check for errors in type assertions
+    check-type-assertions: true
+    # Check for errors in assignments
+    check-blank: true
+
+  govet:
+    # Check for shadowed variables
+    check-shadowing: true
+
+  gocyclo:
+    # Max cyclomatic complexity
+    min-complexity: 15
+
+  dupl:
+    # Minimum lines to consider as duplicate
+    threshold: 100
+
+  goconst:
+    # Minimum length of string constant
+    min-len: 3
+    # Minimum occurrences to trigger
+    min-occurrences: 3
+
+  misspell:
+    # Correct commonly misspelled English words
+    locale: US
+
+  prealloc:
+    # Report preallocation suggestions only on simple loops
+    simple: true
+    range-loops: true
+    for-loops: true
+
+  gocritic:
+    enabled-tags:
+      - performance
+      - style
+      - experimental
+    disabled-checks:
+      - commentedOutCode
+
+issues:
+  # Exclude some linters from running on test files
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+        - goconst
+
+    # Exclude license header check (we handle this separately)
+    - linters:
+        - goheader
+      text: "go-header"
+
+  # Maximum count of issues with the same text
+  max-same-issues: 3
+
+  # Show all issues from a linter
+  max-issues-per-linter: 0
+
+  # Fix found issues (if it's supported by the linter)
+  fix: false
+
+run:
+  # Timeout for analysis
+  timeout: 5m
+
+  # Exit code when at least one issue was found
+  issues-exit-code: 1
+
+  # Include test files
+  tests: true
+
+  # Skip vendor, third party, etc.
+  skip-dirs:
+    - vendor
+    - test/testdata
+
+  # Skip files
+  skip-files:
+    - ".*\\.pb\\.go$"
+
+output:
+  # Format: colored-line-number|line-number|json|tab|checkstyle|code-climate
+  format: colored-line-number
+
+  # Print lines of code with issue
+  print-issued-lines: true
+
+  # Print linter name in the end of issue text
+  print-linter-name: true
+
+  # Make issues output unique by line
+  uniq-by-line: true
+
+  # Sort results by: filepath, line and column
+  sort-results: true
