@@ -1,0 +1,37 @@
+# <type>: <description>
+
+# Why is this change necessary?
+# 
+
+# Any additional context?
+# 
+
+# ============== Commit Type Guidelines ==============
+# feat:     New feature
+# fix:      Bug fix
+# docs:     Documentation only
+# style:    Formatting, missing semicolons, etc. (no code change)
+# refactor: Code restructuring (no behavior change)
+# perf:     Performance improvements
+# test:     Adding or updating tests
+# chore:    Maintenance tasks (update dependencies, etc.)
+# ci:       CI/CD changes
+#
+# ============== Important Reminders ==================
+# - Keep first line under 72 characters
+# - Use imperative mood ("add" not "added")
+# - Focus on WHAT and WHY, not HOW
+# - This is a PUBLIC repository
+#
+# ============== NEVER INCLUDE ========================
+# ❌ References to phases, roadmaps, or planning docs
+# ❌ Internal terminology (CLAUDE.md, PIVOT_PLAN.md)
+# ❌ Development process details
+# ❌ Task/subtask language
+# ❌ "Meeting requirements" or similar phrases
+#
+# ============== ALWAYS INCLUDE =======================
+# ✅ Clear technical description
+# ✅ User-facing impact (if any)
+# ✅ Issue references (if applicable)
+# ====================================================
