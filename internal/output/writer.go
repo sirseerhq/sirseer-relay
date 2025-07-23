@@ -1,4 +1,4 @@
-// Copyright 2025 SirSeer Inc.
+// Copyright 2025 SirSeer, LLC
 //
 // Licensed under the Business Source License 1.1 (the "License");
 // you may not use this file except in compliance with the License.
