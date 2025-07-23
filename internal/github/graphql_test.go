@@ -31,7 +31,7 @@ var _ Client = (*GraphQLClient)(nil)
 
 func TestGraphQLClient_MapError(t *testing.T) {
 	client := &GraphQLClient{}
-	
+
 	tests := []struct {
 		name        string
 		err         error
@@ -137,26 +137,26 @@ func TestGraphQLClient_MapError(t *testing.T) {
 			wantMessage: "",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := client.mapError(tt.err, tt.owner, tt.repo)
-			
+
 			if tt.err == nil {
 				if err != nil {
 					t.Fatalf("expected nil error, got %v", err)
 				}
 				return
 			}
-			
+
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
-			
+
 			if tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
 				t.Errorf("expected error %v, got %v", tt.wantErr, err)
 			}
-			
+
 			if tt.wantMessage != "" && !strings.Contains(err.Error(), tt.wantMessage) {
 				t.Errorf("expected error message to contain %q, got %v", tt.wantMessage, err)
 			}
@@ -170,7 +170,7 @@ func TestAuthTransport(t *testing.T) {
 		token: token,
 		base:  http.DefaultTransport,
 	}
-	
+
 	// Create a test server to verify headers
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check auth header
@@ -178,37 +178,37 @@ func TestAuthTransport(t *testing.T) {
 		if auth != "Bearer "+token {
 			t.Errorf("expected Authorization header 'Bearer %s', got %q", token, auth)
 		}
-		
+
 		// Check user agent
 		ua := r.Header.Get("User-Agent")
 		if !strings.Contains(ua, "sirseer-relay") {
 			t.Errorf("expected User-Agent to contain 'sirseer-relay', got %q", ua)
 		}
-		
+
 		// Return some data to test size limiting
 		fmt.Fprint(w, "test response")
 	}))
 	defer server.Close()
-	
+
 	// Make a request
-	req, err := http.NewRequest("GET", server.URL, nil)
+	req, err := http.NewRequest("GET", server.URL, http.NoBody)
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
 	}
-	
+
 	client := &http.Client{Transport: transport}
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// Read response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("failed to read response: %v", err)
 	}
-	
+
 	if string(body) != "test response" {
 		t.Errorf("expected body 'test response', got %q", string(body))
 	}
@@ -221,17 +221,17 @@ func TestLimitedReader(t *testing.T) {
 			ReadCloser: io.NopCloser(strings.NewReader(data)),
 			limit:      100,
 		}
-		
+
 		body, err := io.ReadAll(reader)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		
+
 		if string(body) != data {
 			t.Errorf("expected %q, got %q", data, string(body))
 		}
 	})
-	
+
 	t.Run("exceeds limit", func(t *testing.T) {
 		// Test that limited reader enforces size limit
 		data := strings.Repeat("a", 100)
@@ -239,14 +239,14 @@ func TestLimitedReader(t *testing.T) {
 			ReadCloser: io.NopCloser(strings.NewReader(data)),
 			limit:      50,
 		}
-		
+
 		buf := make([]byte, 200)
 		totalRead := 0
-		
+
 		for {
 			n, err := reader.Read(buf[totalRead:])
 			totalRead += n
-			
+
 			if err != nil {
 				if err == io.EOF && totalRead == 50 {
 					// This is expected - we read up to the limit
@@ -258,13 +258,13 @@ func TestLimitedReader(t *testing.T) {
 				}
 				t.Fatalf("unexpected error: %v", err)
 			}
-			
+
 			if totalRead > 50 {
 				t.Errorf("read more than limit: %d > 50", totalRead)
 				break
 			}
 		}
-		
+
 		if totalRead != 50 {
 			t.Errorf("expected to read exactly 50 bytes, got %d", totalRead)
 		}
@@ -287,7 +287,7 @@ func TestContainsNoCase(t *testing.T) {
 		{"abcdef", "DEF", true},
 		{"abcdef", "xyz", false},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s contains %s", tt.s, tt.substr), func(t *testing.T) {
 			got := containsNoCase(tt.s, tt.substr)
@@ -311,7 +311,7 @@ func TestToLower(t *testing.T) {
 		{'!', '!'},
 		{' ', ' '},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("toLower(%c)", tt.input), func(t *testing.T) {
 			got := toLower(tt.input)
