@@ -50,9 +50,9 @@ check_forbidden_terms() {
     local found=0
     for term in "${forbidden_terms[@]}"; do
         # Exclude .git directory, binary files, and this script itself
-        if git grep -l -E "$term" -- ':!.git' ':!*.png' ':!*.jpg' ':!*.pdf' ':!scripts/pre-push-check.sh' ':!.githooks/pre-commit' ':!.gitignore' > /dev/null 2>&1; then
+        if git grep -l -E "$term" -- ':!.git' ':!*.png' ':!*.jpg' ':!*.pdf' ':!scripts/pre-push-check.sh' ':!.githooks/pre-commit' ':!.gitignore' ':!.gitmessage' > /dev/null 2>&1; then
             echo -e "${RED}Found forbidden term: $term${NC}"
-            git grep -n -E "$term" -- ':!.git' ':!*.png' ':!*.jpg' ':!*.pdf' ':!scripts/pre-push-check.sh' ':!.githooks/pre-commit' ':!.gitignore' | head -5
+            git grep -n -E "$term" -- ':!.git' ':!*.png' ':!*.jpg' ':!*.pdf' ':!scripts/pre-push-check.sh' ':!.githooks/pre-commit' ':!.gitignore' ':!.gitmessage' | head -5
             found=1
         fi
     done
