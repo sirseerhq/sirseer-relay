@@ -31,30 +31,14 @@ func main() {
 pull request data from GitHub repositories. It efficiently handles repositories
 of any size while maintaining low memory usage through streaming architecture.`,
 		Version: version,
+		SilenceUsage: true, // Don't show usage on error
+		SilenceErrors: true, // We'll handle error printing ourselves
 	}
 
 	rootCmd.AddCommand(newFetchCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(mapErrorToExitCode(err))
 	}
-}
-
-func newFetchCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "fetch <org>/<repo>",
-		Short: "Fetch pull request data from a GitHub repository",
-		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("Fetch command not yet implemented")
-		},
-	}
-
-	cmd.Flags().Bool("all", false, "Fetch all pull requests")
-	cmd.Flags().String("since", "", "Fetch PRs created after this date")
-	cmd.Flags().String("until", "", "Fetch PRs created before this date")
-	cmd.Flags().Bool("incremental", false, "Resume from last fetch")
-
-	return cmd
 }
