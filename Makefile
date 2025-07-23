@@ -11,13 +11,13 @@ LDFLAGS=-ldflags "-X github.com/sirseerhq/sirseer-relay/pkg/version.Version=$(VE
 
 # Build the binary
 .PHONY: build
-build:
+build: test
 	@echo "Building $(BINARY_NAME)..."
 	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) $(MAIN_PATH)
 
 # Run tests
 .PHONY: test
-test:
+test: lint
 	@echo "Running tests..."
 	$(GO) test $(GOFLAGS) -race -cover ./...
 
@@ -37,7 +37,7 @@ license:
 		echo "Installing addlicense..."; \
 		go install github.com/google/addlicense@latest; \
 	fi
-	PATH=$$PATH:$$(go env GOPATH)/bin addlicense -f .license-header -c "SirSeer Inc." -y 2025 $$(find . -name '*.go')
+	PATH=$$PATH:$$(go env GOPATH)/bin addlicense -f .license-header -c "SirSeer, LLC" -y 2025 $$(find . -name '*.go')
 
 # Check license headers
 .PHONY: license-check
@@ -57,14 +57,13 @@ license-check:
 
 # Run linter
 .PHONY: lint
-lint: license-check
+lint:
 	@echo "Running linters..."
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run ./...; \
-	else \
-		echo "golangci-lint not installed. Running go vet instead..."; \
-		$(GO) vet ./...; \
+	@if ! command -v golangci-lint >/dev/null 2>&1; then \
+		echo "Installing golangci-lint..."; \
+		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
 	fi
+	PATH=$$PATH:$$(go env GOPATH)/bin golangci-lint run ./...
 
 # Format code
 .PHONY: fmt
