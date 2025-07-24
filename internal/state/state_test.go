@@ -160,7 +160,7 @@ func TestLoadState_ChecksumMismatch(t *testing.T) {
 	}
 
 	// Tamper with the content by changing a field
-	tamperedData := strings.Replace(string(data), `"last_pr_number": 100`, `"last_pr_number": 200`, 1)
+	tamperedData := strings.Replace(string(data), `"last_pr_number":100`, `"last_pr_number":200`, 1)
 
 	// Write back the tampered data
 	if writeErr := os.WriteFile(stateFile, []byte(tamperedData), 0o644); writeErr != nil {

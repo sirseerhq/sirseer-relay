@@ -63,8 +63,8 @@ func SaveState(state *FetchState, stateFile string) error {
 	// Create a temporary file in the same directory
 	tempFile := stateFile + ".tmp"
 
-	// Marshal state to JSON with indentation for readability
-	data, err := json.MarshalIndent(state, "", "  ")
+	// Marshal state to compact JSON for efficiency
+	data, err := json.Marshal(state)
 	if err != nil {
 		return fmt.Errorf("failed to marshal state: %w", err)
 	}

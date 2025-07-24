@@ -15,6 +15,7 @@
 package output
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -34,6 +35,7 @@ type Writer struct {
 	encoder   *json.Encoder
 	count     int
 	closeFunc func() error
+	bufWriter *bufio.Writer // For buffered file writes
 }
 
 // NewWriter creates a new NDJSON writer that writes to the specified output.
@@ -75,10 +77,21 @@ func NewFileWriter(filename string) (*Writer, error) {
 		return nil, fmt.Errorf("failed to create output file: %w", err)
 	}
 
+	// Create a buffered writer with 64KB buffer for efficient disk writes
+	bufWriter := bufio.NewWriterSize(file, 64*1024)
+
 	return &Writer{
 		output:    file,
-		encoder:   json.NewEncoder(file),
-		closeFunc: file.Close,
+		encoder:   json.NewEncoder(bufWriter),
+		bufWriter: bufWriter,
+		closeFunc: func() error {
+			// Flush buffer before closing file
+			if err := bufWriter.Flush(); err != nil {
+				file.Close()
+				return fmt.Errorf("failed to flush buffer: %w", err)
+			}
+			return file.Close()
+		},
 	}, nil
 }
 
