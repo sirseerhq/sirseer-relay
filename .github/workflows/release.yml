@@ -1,0 +1,190 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  GO_VERSION: '1.24'
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: get_version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          # Get the previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          if [ -z "$PREV_TAG" ]; then
+            echo "First release"
+            COMMITS=$(git log --pretty=format:"- %s" --no-merges)
+          else
+            echo "Changes since $PREV_TAG"
+            COMMITS=$(git log --pretty=format:"- %s" --no-merges $PREV_TAG..HEAD)
+          fi
+          
+          # Group commits by type
+          cat > notes.md << EOF
+          ## What's Changed
+          
+          ### Features
+          $(echo "$COMMITS" | grep -E "^- feat:|^- feature:" | sed 's/^- feat: /- /g' | sed 's/^- feature: /- /g' || echo "None")
+          
+          ### Bug Fixes
+          $(echo "$COMMITS" | grep -E "^- fix:|^- bugfix:" | sed 's/^- fix: /- /g' | sed 's/^- bugfix: /- /g' || echo "None")
+          
+          ### Documentation
+          $(echo "$COMMITS" | grep -E "^- docs:|^- doc:" | sed 's/^- docs: /- /g' | sed 's/^- doc: /- /g' || echo "None")
+          
+          ### Other Changes
+          $(echo "$COMMITS" | grep -vE "^- (feat|feature|fix|bugfix|docs|doc):" || echo "None")
+          
+          ## Installation
+          
+          Download the appropriate binary for your platform from the assets below.
+          
+          ### macOS
+          \`\`\`bash
+          curl -L https://github.com/sirseerhq/sirseer-relay/releases/download/${{ steps.get_version.outputs.version }}/sirseer-relay-darwin-amd64 -o sirseer-relay
+          chmod +x sirseer-relay
+          ./sirseer-relay --version
+          \`\`\`
+          
+          ### Linux
+          \`\`\`bash
+          curl -L https://github.com/sirseerhq/sirseer-relay/releases/download/${{ steps.get_version.outputs.version }}/sirseer-relay-linux-amd64 -o sirseer-relay
+          chmod +x sirseer-relay
+          ./sirseer-relay --version
+          \`\`\`
+          
+          ### Windows
+          Download the Windows executable from the assets below.
+          
+          ## License
+          
+          This software is licensed under the Business Source License 1.1. See LICENSE for details.
+          EOF
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ steps.get_version.outputs.version }}
+          body_path: notes.md
+          draft: false
+          prerelease: false
+
+  build-binaries:
+    name: Build Binaries
+    needs: create-release
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+          - os: darwin
+            arch: amd64
+          - os: darwin
+            arch: arm64
+          - os: windows
+            arch: amd64
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          # Build with version injection
+          VERSION=${{ needs.create-release.outputs.version }}
+          LDFLAGS="-X github.com/sirseerhq/sirseer-relay/pkg/version.Version=$VERSION"
+          
+          OUTPUT="sirseer-relay-${{ matrix.os }}-${{ matrix.arch }}"
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            OUTPUT="${OUTPUT}.exe"
+          fi
+          
+          echo "Building $OUTPUT with version $VERSION"
+          go build -ldflags "$LDFLAGS" -o $OUTPUT ./cmd/relay
+          
+          # Create checksums
+          sha256sum $OUTPUT > $OUTPUT.sha256
+
+      - name: Upload binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: sirseer-relay-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }}
+          asset_name: sirseer-relay-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }}
+          asset_content_type: application/octet-stream
+
+      - name: Upload checksum
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: sirseer-relay-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }}.sha256
+          asset_name: sirseer-relay-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }}.sha256
+          asset_content_type: text/plain
+
+  create-checksums:
+    name: Create Combined Checksums
+    needs: [create-release, build-binaries]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release assets
+        run: |
+          # Download all binaries and create combined checksum file
+          VERSION=${{ needs.create-release.outputs.version }}
+          
+          curl -L -o sirseer-relay-linux-amd64 \
+            https://github.com/sirseerhq/sirseer-relay/releases/download/$VERSION/sirseer-relay-linux-amd64
+          curl -L -o sirseer-relay-darwin-amd64 \
+            https://github.com/sirseerhq/sirseer-relay/releases/download/$VERSION/sirseer-relay-darwin-amd64
+          curl -L -o sirseer-relay-darwin-arm64 \
+            https://github.com/sirseerhq/sirseer-relay/releases/download/$VERSION/sirseer-relay-darwin-arm64
+          curl -L -o sirseer-relay-windows-amd64.exe \
+            https://github.com/sirseerhq/sirseer-relay/releases/download/$VERSION/sirseer-relay-windows-amd64.exe
+          
+          # Create combined checksums
+          sha256sum sirseer-relay-* > checksums.txt
+
+      - name: Upload combined checksums
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: checksums.txt
+          asset_name: checksums.txt
+          asset_content_type: text/plain
