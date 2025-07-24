@@ -87,7 +87,7 @@ func NewFileWriter(filename string) (*Writer, error) {
 		closeFunc: func() error {
 			// Flush buffer before closing file
 			if err := bufWriter.Flush(); err != nil {
-				file.Close()
+				_ = file.Close()
 				return fmt.Errorf("failed to flush buffer: %w", err)
 			}
 			return file.Close()

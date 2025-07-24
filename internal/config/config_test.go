@@ -195,7 +195,7 @@ func TestValidate(t *testing.T) {
 				Defaults: DefaultsConfig{BatchSize: 150},
 				GitHub:   GitHubConfig{APIEndpoint: "http://api", GraphQLEndpoint: "http://graphql"},
 			},
-			wantErr: "batch size cannot exceed 100",
+			wantErr: "exceeds GitHub API limit of 100",
 		},
 		{
 			name: "empty API endpoint",

@@ -78,20 +78,23 @@ func SaveState(state *FetchState, stateFile string) error {
 	file, err := os.Open(tempFile)
 	if err != nil {
 		// Clean up temp file
-		os.Remove(tempFile)
+		_ = os.Remove(tempFile)
 		return fmt.Errorf("failed to open temp file for sync: %w", err)
 	}
 	if err := file.Sync(); err != nil {
-		file.Close()
-		os.Remove(tempFile)
+		_ = file.Close()
+		_ = os.Remove(tempFile)
 		return fmt.Errorf("failed to sync temp file: %w", err)
 	}
-	file.Close()
+	if err := file.Close(); err != nil {
+		_ = os.Remove(tempFile)
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
 
 	// Atomic rename
 	if err := os.Rename(tempFile, stateFile); err != nil {
 		// Clean up temp file
-		os.Remove(tempFile)
+		_ = os.Remove(tempFile)
 		return fmt.Errorf("failed to rename temp file: %w", err)
 	}
 
@@ -105,9 +108,9 @@ func LoadState(stateFile string) (*FetchState, error) {
 	data, err := os.ReadFile(stateFile)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("no previous fetch state found")
+			return nil, fmt.Errorf("no previous fetch state found at %s. Use --all flag for initial fetch", stateFile)
 		}
-		return nil, fmt.Errorf("failed to read state file: %w", err)
+		return nil, fmt.Errorf("failed to read state file %s: %w", stateFile, err)
 	}
 
 	// Unmarshal the state
