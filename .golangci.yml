@@ -21,6 +21,7 @@ linters:
     - dupl          # Find duplicated code
     - goconst       # Find repeated strings that could be constants
     - gocritic      # Various checks
+    - shadow        # Check for shadowed variables
 
 linters-settings:
   errcheck:
@@ -30,8 +31,8 @@ linters-settings:
     check-blank: true
 
   govet:
-    # Check for shadowed variables
-    check-shadowing: true
+    # Enable all analyzers
+    enable-all: true
 
   gocyclo:
     # Max cyclomatic complexity
@@ -66,6 +67,15 @@ linters-settings:
       - commentedOutCode
 
 issues:
+  # Exclude directories from analysis
+  exclude-dirs:
+    - vendor
+    - test/testdata
+
+  # Exclude files from analysis
+  exclude-files:
+    - ".*\\.pb\\.go$"
+
   # Exclude some linters from running on test files
   exclude-rules:
     - path: _test\.go
@@ -99,15 +109,6 @@ run:
 
   # Include test files
   tests: true
-
-  # Skip vendor, third party, etc.
-  skip-dirs:
-    - vendor
-    - test/testdata
-
-  # Skip files
-  skip-files:
-    - ".*\\.pb\\.go$"
 
 output:
   # Format configuration for golangci-lint v1.60+
