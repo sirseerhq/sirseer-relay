@@ -80,10 +80,8 @@ func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error
 
 		// Save state before waiting
 		if t.stateSaver != nil {
-			if err := t.stateSaver.Save(); err != nil {
-				// Log but don't fail - state saving is best effort
-				fmt.Printf("Warning: failed to save state before rate limit wait: %v\n", err)
-			}
+			// Save state before waiting - best effort
+			_ = t.stateSaver.Save()
 		}
 
 		// Wait for rate limit to reset
@@ -146,10 +144,6 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		// Don't retry on the last attempt
 		if attempt < t.maxRetries-1 {
-			// Show retry message
-			fmt.Printf("Network error: %v\n", lastErr)
-			fmt.Printf("Retrying in %v...\n", backoff)
-
 			// Wait with exponential backoff
 			select {
 			case <-time.After(backoff):
