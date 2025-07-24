@@ -19,11 +19,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/shurcooL/graphql"
 	relaierrors "github.com/sirseerhq/sirseer-relay/internal/errors"
+	"github.com/sirseerhq/sirseer-relay/internal/giterror"
 	"github.com/sirseerhq/sirseer-relay/pkg/version"
 )
 
@@ -31,8 +31,9 @@ import (
 // It provides efficient access to GitHub's data with support for pagination,
 // error handling, and safety features like timeouts and response size limits.
 type GraphQLClient struct {
-	client *graphql.Client
-	token  string
+	client    *graphql.Client
+	token     string
+	inspector giterror.Inspector
 }
 
 // NewGraphQLClient creates a new GitHub GraphQL client with the provided token.
@@ -63,8 +64,9 @@ func NewGraphQLClient(token string) *GraphQLClient {
 	client := graphql.NewClient("https://api.github.com/graphql", httpClient)
 
 	return &GraphQLClient{
-		client: client,
-		token:  token,
+		client:    client,
+		token:     token,
+		inspector: giterror.NewInspector(),
 	}
 }
 
@@ -196,60 +198,29 @@ func (c *GraphQLClient) mapError(err error, owner, repo string) error {
 		return nil
 	}
 
-	errStr := err.Error()
-
-	// Check each error type
-	if isAuthError(errStr) {
+	// Use the inspector to classify errors
+	if c.inspector.IsAuthError(err) {
 		return fmt.Errorf("GitHub API authentication failed. Please provide a valid token via --token flag or GITHUB_TOKEN environment variable: %w", relaierrors.ErrInvalidToken)
 	}
 
-	if isNotFoundError(errStr) {
+	if c.inspector.IsNotFoundError(err) {
 		return fmt.Errorf("repository '%s/%s' not found. Please check the repository name and your access permissions: %w", owner, repo, relaierrors.ErrRepoNotFound)
 	}
 
-	if isRateLimitError(errStr) {
+	if c.inspector.IsRateLimitError(err) {
 		return fmt.Errorf("GitHub API rate limit exceeded. Please wait before retrying: %w", relaierrors.ErrRateLimit)
 	}
 
-	if isComplexityError(errStr) {
+	if c.inspector.IsComplexityError(err) {
 		return fmt.Errorf("GraphQL query complexity exceeded. Reducing batch size may help: %w", relaierrors.ErrQueryComplexity)
 	}
 
-	if isNetworkError(errStr) {
+	if c.inspector.IsNetworkError(err) {
 		return fmt.Errorf("network error connecting to GitHub API. Please check your internet connection and try again: %w", relaierrors.ErrNetworkFailure)
 	}
 
 	// Generic error
 	return fmt.Errorf("failed to fetch pull requests: %w", err)
-}
-
-func isAuthError(errStr string) bool {
-	errLower := strings.ToLower(errStr)
-	return strings.Contains(errLower, "401") || strings.Contains(errLower, "403") ||
-		strings.Contains(errLower, "unauthorized") || strings.Contains(errLower, "forbidden")
-}
-
-func isNotFoundError(errStr string) bool {
-	errLower := strings.ToLower(errStr)
-	return strings.Contains(errLower, "404") || strings.Contains(errLower, "not found") ||
-		strings.Contains(errLower, "could not resolve to a repository")
-}
-
-func isRateLimitError(errStr string) bool {
-	errLower := strings.ToLower(errStr)
-	return strings.Contains(errLower, "rate limit") || strings.Contains(errLower, "429")
-}
-
-func isComplexityError(errStr string) bool {
-	errLower := strings.ToLower(errStr)
-	return strings.Contains(errLower, "complexity") || strings.Contains(errLower, "query has complexity") ||
-		strings.Contains(errLower, "exceeds maximum")
-}
-
-func isNetworkError(errStr string) bool {
-	errLower := strings.ToLower(errStr)
-	return strings.Contains(errLower, "connection refused") || strings.Contains(errLower, "no such host") ||
-		strings.Contains(errLower, "timeout")
 }
 
 // limitedReader wraps a ReadCloser with a size limit to prevent excessive memory usage.
@@ -310,4 +281,3 @@ func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	return resp, nil
 }
-

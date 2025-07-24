@@ -103,10 +103,14 @@ func LoadConfigForRepo(configPath, repo string) (*Config, error) {
 func loadConfigFile(path string, cfg *Config) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read config file %s: %w", path, err)
 	}
 
-	return yaml.Unmarshal(data, cfg)
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return fmt.Errorf("failed to parse config file %s: %w", path, err)
+	}
+
+	return nil
 }
 
 // applyEnvOverrides applies environment variable overrides to config
@@ -152,10 +156,10 @@ func parsePositiveInt(s string) (int, error) {
 	var i int
 	_, err := fmt.Sscanf(s, "%d", &i)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to parse integer from '%s': %w", s, err)
 	}
 	if i <= 0 {
-		return 0, fmt.Errorf("value must be positive")
+		return 0, fmt.Errorf("value must be positive, got: %d", i)
 	}
 	return i, nil
 }
@@ -183,10 +187,10 @@ func (c *Config) GetBatchSize(repo string) int {
 // to catch invalid settings early.
 func (c *Config) Validate() error {
 	if c.Defaults.BatchSize <= 0 {
-		return fmt.Errorf("batch size must be positive")
+		return fmt.Errorf("default batch size must be positive, got: %d", c.Defaults.BatchSize)
 	}
 	if c.Defaults.BatchSize > 100 {
-		return fmt.Errorf("batch size cannot exceed 100 (GitHub API limit)")
+		return fmt.Errorf("default batch size %d exceeds GitHub API limit of 100", c.Defaults.BatchSize)
 	}
 	if c.GitHub.APIEndpoint == "" {
 		return fmt.Errorf("GitHub API endpoint cannot be empty")

@@ -152,13 +152,13 @@ func SaveMetadata(metadata *FetchMetadata, stateDir string) error {
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(metadata); err != nil {
-		file.Close()
-		os.Remove(tmpFile)
+		_ = file.Close()
+		_ = os.Remove(tmpFile)
 		return fmt.Errorf("failed to write metadata: %w", err)
 	}
 
 	if err := file.Close(); err != nil {
-		os.Remove(tmpFile)
+		_ = os.Remove(tmpFile)
 		return fmt.Errorf("failed to close metadata file: %w", err)
 	}
 
