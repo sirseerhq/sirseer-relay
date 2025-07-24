@@ -1,81 +1,101 @@
-# Planning documents
+# ===================
+# Internal Documents
+# ===================
 CLAUDE.md
 PIVOT_PLAN.md
+PERFORMANCE_RESULTS.md
+TEST_SUITE_REFINEMENT_REPORT.md
 
-# Claude Code metadata
+# ===================
+# Development Tools
+# ===================
+# Claude Code
 .claude/
 
 # License header template
 .license-header
 
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-
-# Binary output
-sirseer-relay
-
-# Test binary, built with `go test -c`
-*.test
-
-# Output of the go coverage tool
-*.out
-coverage.txt
-coverage.html
-
-# Dependency directories
-vendor/
-
-# Go workspace files
-go.work
-go.work.sum
-
-# Build directories
-dist/
-build/
-
-# IDE specific files
+# IDE files
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
 
-# OS specific files
-.DS_Store
-Thumbs.db
-
-# SirSeer Relay output files
-output/
-
-# Test output
-test-output/
-*.ndjson
-*.json
-!test/fixtures/**/*.json
-
-# State files
-*.state
-
-# Environment files (for GitHub tokens)
+# ===================
+# Environment & Config
+# ===================
 .env
 .env.*
 .envrc
 
-# Temporary files
-tmp/
-temp/
+# ===================
+# Build Artifacts
+# ===================
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+sirseer-relay
 relay
+
+# Build directories
+dist/
+build/
+
+# ===================
+# Test Artifacts
+# ===================
+# Test binaries
+*.test
+integration.test
+
+# Coverage
+*.out
+coverage.txt
+coverage.html
+
+# Test outputs
+test-output/
+benchmarks/
 test_output.log
 
-# Benchmark outputs
-benchmarks/
+# ===================
+# Output Files
+# ===================
+# SirSeer Relay outputs
+output/
+*.ndjson
+*.json
+!test/fixtures/**/*.json
+!examples/**/*.json
 
-# Performance reports (internal use only)
-PERFORMANCE_RESULTS.md
+# State files
+*.state
 
-# Test refactoring reports
-TEST_SUITE_REFINEMENT_REPORT.md
+# Metadata files
+*-metadata.json
+fetch-metadata.json
+
+# ===================
+# Dependencies
+# ===================
+vendor/
+
+# Go workspace
+go.work
+go.work.sum
+
+# ===================
+# OS Files
+# ===================
+.DS_Store
+Thumbs.db
+
+# ===================
+# Temporary Files
+# ===================
+tmp/
+temp/
