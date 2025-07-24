@@ -16,16 +16,21 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/sirseerhq/sirseer-relay/internal/config"
 	relaierrors "github.com/sirseerhq/sirseer-relay/internal/errors"
 	"github.com/sirseerhq/sirseer-relay/internal/github"
+	"github.com/sirseerhq/sirseer-relay/internal/metadata"
 	"github.com/sirseerhq/sirseer-relay/internal/output"
 	"github.com/sirseerhq/sirseer-relay/internal/state"
+	"github.com/sirseerhq/sirseer-relay/pkg/version"
 	"github.com/spf13/cobra"
 )
 
@@ -33,12 +38,14 @@ import (
 // This command fetches pull request data from a specified GitHub repository
 // and outputs it in NDJSON format. By default, it fetches only the first page
 // of pull requests (up to 50). Use the --all flag to fetch all pull requests.
-func newFetchCommand() *cobra.Command {
+func newFetchCommand(configFile string) *cobra.Command {
 	var (
 		token          string
 		outputFile     string
+		metadataFile   string
 		fetchAll       bool
 		requestTimeout int
+		batchSize      int
 	)
 
 	cmd := &cobra.Command{
@@ -70,16 +77,42 @@ Examples:
   sirseer-relay fetch golang/go --all --output prs.ndjson`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Load configuration
+			cfg, err := config.LoadConfigForRepo(configFile, args[0])
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			// Validate configuration
+			if validateErr := cfg.Validate(); validateErr != nil {
+				return fmt.Errorf("invalid configuration: %w", validateErr)
+			}
+
+			// Apply config defaults and CLI overrides
+			// CLI flags take precedence over config file
+			if batchSize == 0 {
+				batchSize = cfg.GetBatchSize(args[0])
+			}
+
 			// Create context with timeout
 			ctx, cancel := context.WithTimeout(cmd.Context(), time.Duration(requestTimeout)*time.Second)
 			defer cancel()
 
 			// Get date flags
-			since, _ := cmd.Flags().GetString("since")
-			until, _ := cmd.Flags().GetString("until")
-			incremental, _ := cmd.Flags().GetBool("incremental")
+			since, err := cmd.Flags().GetString("since")
+			if err != nil {
+				return fmt.Errorf("failed to get since flag: %w", err)
+			}
+			until, err := cmd.Flags().GetString("until")
+			if err != nil {
+				return fmt.Errorf("failed to get until flag: %w", err)
+			}
+			incremental, err := cmd.Flags().GetBool("incremental")
+			if err != nil {
+				return fmt.Errorf("failed to get incremental flag: %w", err)
+			}
 
-			return runFetch(ctx, args[0], token, outputFile, fetchAll, since, until, incremental)
+			return runFetch(ctx, args[0], token, outputFile, metadataFile, fetchAll, batchSize, since, until, incremental, cfg)
 		},
 	}
 
@@ -94,18 +127,24 @@ Examples:
 	// Time window filtering
 	cmd.Flags().String("since", "", "Fetch PRs created on or after this date (format: YYYY-MM-DD, RFC3339, or relative like 7d)")
 	cmd.Flags().String("until", "", "Fetch PRs created on or before this date (format: YYYY-MM-DD, RFC3339, or relative like 7d)")
-	
+
 	// Incremental fetch
 	cmd.Flags().Bool("incremental", false, "Continue from the last successful fetch (requires previous state file)")
+
+	// Configuration
+	cmd.Flags().IntVar(&batchSize, "batch-size", 0, "Number of PRs to fetch per API call (default from config or 50)")
+
+	// Metadata
+	cmd.Flags().StringVar(&metadataFile, "metadata-file", "", "Path to save fetch metadata (default: fetch-metadata.json)")
 
 	return cmd
 }
 
 // runFetch executes the main fetch logic. It parses the repository argument,
 // validates the GitHub token, creates the output writer, and delegates to either
-// fetchFirstPage (default) or fetchAllPullRequests (with --all flag).
+// fetchFirstPageWithOptions (default) or fetchAllPullRequestsWithOptions (with --all flag).
 // Returns an error if any step fails, which will be mapped to an appropriate exit code.
-func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile string, fetchAll bool, since, until string, incremental bool) error {
+func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile, metadataFile string, fetchAll bool, batchSize int, since, until string, incremental bool, cfg *config.Config) error {
 	// Parse repository argument
 	owner, repo, err := parseRepository(repoArg)
 	if err != nil {
@@ -113,9 +152,9 @@ func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile string, fetchA
 	}
 
 	// Get GitHub token
-	token := getToken(tokenFlag)
+	token := getToken(tokenFlag, cfg.GitHub.TokenEnv)
 	if token == "" {
-		return fmt.Errorf("GitHub token not found. Set GITHUB_TOKEN or use --token flag")
+		return fmt.Errorf("GitHub token not found. Set %s or use --token flag", cfg.GitHub.TokenEnv)
 	}
 
 	// Create output writer
@@ -133,7 +172,8 @@ func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile string, fetchA
 	}
 	defer writer.Close()
 
-	// Create GitHub client
+	// Create GitHub client with config endpoints
+	// TODO: Update github package to accept custom endpoints
 	client := github.NewGraphQLClient(token)
 
 	// Parse date flags
@@ -160,22 +200,23 @@ func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile string, fetchA
 
 	// Handle incremental fetch
 	if incremental {
-		return fetchIncremental(ctx, client, owner, repo, writer, sinceTime, untilTime, fetchAll)
+		return fetchIncremental(ctx, client, owner, repo, writer, metadataFile, sinceTime, untilTime, fetchAll)
 	}
 
-	// Build fetch options
+	// Build fetch options with batch size
 	opts := github.FetchOptions{
-		Since: sinceTime,
-		Until: untilTime,
+		Since:    sinceTime,
+		Until:    untilTime,
+		PageSize: batchSize,
 	}
 
 	// Fetch all PRs if --all flag is set
 	if fetchAll {
-		return fetchAllPullRequestsWithOptions(ctx, client, owner, repo, writer, opts)
+		return fetchAllPullRequestsWithOptions(ctx, client, owner, repo, writer, metadataFile, opts)
 	}
 
 	// Default behavior: fetch first page only
-	return fetchFirstPageWithOptions(ctx, client, owner, repo, writer, opts)
+	return fetchFirstPageWithOptions(ctx, client, owner, repo, writer, metadataFile, opts)
 }
 
 // parseDate parses a date string in various formats.
@@ -227,29 +268,77 @@ func parseRepository(repoArg string) (owner, repo string, err error) {
 }
 
 // getToken retrieves the GitHub authentication token. It first checks
-// the --token flag value, and if empty, falls back to the GITHUB_TOKEN
+// the --token flag value, and if empty, falls back to the configured
 // environment variable. This allows users flexibility in how they provide
 // authentication credentials.
-func getToken(flagToken string) string {
+func getToken(flagToken, envVar string) string {
 	if flagToken != "" {
 		return flagToken
 	}
-	return os.Getenv("GITHUB_TOKEN")
+	return os.Getenv(envVar)
 }
 
-// fetchFirstPage fetches only the first page of pull requests (default behavior)
-// of pull requests (up to 50) from the repository. This is the default behavior
-// when the --all flag is not specified. It streams results directly to the output
-// writer to maintain low memory usage.
-func fetchFirstPage(ctx context.Context, client github.Client, owner, repo string, writer output.OutputWriter) error {
-	return fetchFirstPageWithOptions(ctx, client, owner, repo, writer, github.FetchOptions{PageSize: 50})
+// saveMetadata saves fetch metadata to the specified file or default location
+func saveMetadata(fetchMetadata *metadata.FetchMetadata, metadataFile string) error {
+	// Determine the output path
+	outputPath := metadataFile
+	if outputPath == "" {
+		outputPath = "fetch-metadata.json"
+	}
+
+	// Convert to absolute path if relative
+	if !filepath.IsAbs(outputPath) {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get current directory: %w", err)
+		}
+		outputPath = filepath.Join(cwd, outputPath)
+	}
+
+	// Ensure parent directory exists
+	parentDir := filepath.Dir(outputPath)
+	if err := os.MkdirAll(parentDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create metadata directory: %w", err)
+	}
+
+	// Write to temporary file first for atomicity
+	tmpFile := outputPath + ".tmp"
+	file, err := os.Create(tmpFile)
+	if err != nil {
+		return fmt.Errorf("failed to create metadata file: %w", err)
+	}
+
+	// Write JSON with proper formatting
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(fetchMetadata); err != nil {
+		file.Close()
+		os.Remove(tmpFile)
+		return fmt.Errorf("failed to write metadata: %w", err)
+	}
+
+	if err := file.Close(); err != nil {
+		os.Remove(tmpFile)
+		return fmt.Errorf("failed to close metadata file: %w", err)
+	}
+
+	// Atomically rename to final location
+	if err := os.Rename(tmpFile, outputPath); err != nil {
+		return fmt.Errorf("failed to save metadata file: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Fetch metadata saved to: %s\n", outputPath)
+	return nil
 }
 
 // fetchFirstPageWithOptions fetches the first page of pull requests with custom options.
-func fetchFirstPageWithOptions(ctx context.Context, client github.Client, owner, repo string, writer output.OutputWriter, opts github.FetchOptions) error {
+func fetchFirstPageWithOptions(ctx context.Context, client github.Client, owner, repo string, writer output.OutputWriter, metadataFile string, opts github.FetchOptions) error {
 	if opts.PageSize <= 0 {
 		opts.PageSize = 50
 	}
+
+	// Initialize metadata tracker
+	tracker := metadata.New()
 
 	// Show progress
 	fmt.Fprintf(os.Stderr, "Fetching pull requests from %s/%s...", owner, repo)
@@ -262,6 +351,9 @@ func fetchFirstPageWithOptions(ctx context.Context, client github.Client, owner,
 		return err
 	}
 
+	// Track API call
+	tracker.IncrementAPICall()
+
 	// Write PRs to output
 	prCount := 0
 	for _, pr := range page.PullRequests {
@@ -269,6 +361,9 @@ func fetchFirstPageWithOptions(ctx context.Context, client github.Client, owner,
 			return fmt.Errorf("failed to write PR: %w", err)
 		}
 		prCount++
+
+		// Update metadata tracker
+		tracker.UpdatePRStats(pr.Number, pr.CreatedAt, pr.UpdatedAt)
 
 		// Update progress
 		fmt.Fprintf(os.Stderr, "\rFetching pull requests from %s/%s... %d PRs fetched", owner, repo, prCount)
@@ -279,6 +374,24 @@ func fetchFirstPageWithOptions(ctx context.Context, client github.Client, owner,
 
 	if prCount > 0 {
 		fmt.Fprintf(os.Stderr, "Successfully fetched %d pull requests\n", prCount)
+
+		// Generate and save metadata for single page fetch
+		params := metadata.FetchParams{
+			Organization: owner,
+			Repository:   repo,
+			Since:        opts.Since,
+			Until:        opts.Until,
+			FetchAll:     false,
+			BatchSize:    opts.PageSize,
+		}
+
+		fetchMetadata := tracker.GenerateMetadata(version.Version, params, false, nil)
+
+		// Save metadata
+		if err := saveMetadata(fetchMetadata, metadataFile); err != nil {
+			// Don't fail the fetch, just warn
+			fmt.Fprintf(os.Stderr, "Warning: failed to save fetch metadata: %v\n", err)
+		}
 	} else {
 		fmt.Fprintf(os.Stderr, "No pull requests found in %s/%s\n", owner, repo)
 	}
@@ -286,23 +399,8 @@ func fetchFirstPageWithOptions(ctx context.Context, client github.Client, owner,
 	return nil
 }
 
-// fetchAllPullRequests orchestrates the complete extraction of all pull requests from a repository.
-// It implements an efficient pagination strategy that:
-//   - Fetches repository metadata to get the total PR count for progress tracking
-//   - Iterates through all pages using GraphQL cursor-based pagination
-//   - Streams each PR immediately to the output writer (no in-memory accumulation)
-//   - Displays real-time progress with percentage completion and ETA
-//   - Automatically recovers from GraphQL query complexity errors by reducing batch size
-//
-// The function maintains constant memory usage regardless of repository size by streaming
-// results directly to the output. This allows it to handle repositories with 100K+ PRs
-// while using less than 100MB of memory.
-func fetchAllPullRequests(ctx context.Context, client github.Client, owner, repo string, writer output.OutputWriter) error {
-	return fetchAllPullRequestsWithOptions(ctx, client, owner, repo, writer, github.FetchOptions{})
-}
-
 // fetchAllPullRequestsWithOptions fetches all pull requests with custom options.
-func fetchAllPullRequestsWithOptions(ctx context.Context, client github.Client, owner, repo string, writer output.OutputWriter, opts github.FetchOptions) error {
+func fetchAllPullRequestsWithOptions(ctx context.Context, client github.Client, owner, repo string, writer output.OutputWriter, metadataFile string, opts github.FetchOptions) error {
 	// First, get repository info for total PR count
 	repoInfo, err := client.GetRepositoryInfo(ctx, owner, repo)
 	if err != nil {
@@ -314,6 +412,9 @@ func fetchAllPullRequestsWithOptions(ctx context.Context, client github.Client, 
 		fmt.Fprintf(os.Stderr, "No pull requests found in %s/%s\n", owner, repo)
 		return nil
 	}
+
+	// Initialize metadata tracker
+	tracker := metadata.New()
 
 	// Initialize progress tracking
 	var (
@@ -346,12 +447,18 @@ func fetchAllPullRequestsWithOptions(ctx context.Context, client github.Client, 
 			return err
 		}
 
+		// Track API call
+		tracker.IncrementAPICall()
+
 		// Stream PRs immediately
 		for _, pr := range page.PullRequests {
 			if err := writer.Write(pr); err != nil {
 				return fmt.Errorf("failed to write PR: %w", err)
 			}
 			allPRsProcessed++
+
+			// Update metadata tracker
+			tracker.UpdatePRStats(pr.Number, pr.CreatedAt, pr.UpdatedAt)
 
 			// Track last PR for state
 			if pr.Number > lastPRNumber {
@@ -378,7 +485,7 @@ func fetchAllPullRequestsWithOptions(ctx context.Context, client github.Client, 
 	if allPRsProcessed > 0 && lastPRNumber > 0 {
 		repoPath := fmt.Sprintf("%s/%s", owner, repo)
 		stateFile := state.GetStateFilePath(repoPath)
-		
+
 		fetchState := &state.FetchState{
 			Repository:    repoPath,
 			LastFetchID:   fmt.Sprintf("full-%d", time.Now().Unix()),
@@ -391,6 +498,24 @@ func fetchAllPullRequestsWithOptions(ctx context.Context, client github.Client, 
 		if err := state.SaveState(fetchState, stateFile); err != nil {
 			// Don't fail the fetch, just warn
 			fmt.Fprintf(os.Stderr, "Warning: failed to save state for incremental fetch: %v\n", err)
+		}
+
+		// Generate and save metadata
+		params := metadata.FetchParams{
+			Organization: owner,
+			Repository:   repo,
+			Since:        opts.Since,
+			Until:        opts.Until,
+			FetchAll:     true,
+			BatchSize:    pageSize,
+		}
+
+		fetchMetadata := tracker.GenerateMetadata(version.Version, params, false, nil)
+
+		// Save metadata
+		if err := saveMetadata(fetchMetadata, metadataFile); err != nil {
+			// Don't fail the fetch, just warn
+			fmt.Fprintf(os.Stderr, "Warning: failed to save fetch metadata: %v\n", err)
 		}
 	}
 
@@ -441,29 +566,121 @@ func fetchWithComplexityRetry(ctx context.Context, client github.Client, owner, 
 	return nil, fmt.Errorf("failed after %d attempts to reduce query complexity", maxRetries)
 }
 
-// fetchIncremental handles incremental fetching by loading previous state and resuming.
-func fetchIncremental(ctx context.Context, client github.Client, owner, repo string, writer output.OutputWriter, sinceTime, untilTime *time.Time, fetchAll bool) error {
-	repoPath := fmt.Sprintf("%s/%s", owner, repo)
-	stateFile := state.GetStateFilePath(repoPath)
-
-	// Load previous state
+// loadAndValidateIncrementalState loads the previous fetch state and validates it matches the current repository.
+// Returns the previous state or an error with appropriate user-friendly message.
+func loadAndValidateIncrementalState(stateFile, repoPath string) (*state.FetchState, error) {
 	prevState, err := state.LoadState(stateFile)
 	if err != nil {
 		if strings.Contains(err.Error(), "no previous fetch state found") {
-			return fmt.Errorf("no previous fetch state found for %s. To start an incremental fetch, first run a full fetch without --incremental", repoPath)
+			return nil, fmt.Errorf("no previous fetch state found for %s. To start an incremental fetch, first run a full fetch without --incremental", repoPath)
 		}
 		if strings.Contains(err.Error(), "corrupted") {
-			return fmt.Errorf("state file is corrupted. To recover: Delete '%s' and run again. Your previous data in the output file is safe", stateFile)
+			return nil, fmt.Errorf("state file is corrupted. To recover: Delete '%s' and run again. Your previous data in the output file is safe", stateFile)
 		}
 		if strings.Contains(err.Error(), "incompatible") {
-			return fmt.Errorf("state file version is incompatible. This usually means the tool has been updated. To recover: Delete '%s' and run a full fetch", stateFile)
+			return nil, fmt.Errorf("state file version is incompatible. This usually means the tool has been updated. To recover: Delete '%s' and run a full fetch", stateFile)
 		}
-		return fmt.Errorf("failed to load state: %w", err)
+		return nil, fmt.Errorf("failed to load state: %w", err)
 	}
 
 	// Verify repository matches
 	if prevState.Repository != repoPath {
-		return fmt.Errorf("state file is for repository %s but current command is for %s", prevState.Repository, repoPath)
+		return nil, fmt.Errorf("state file is for repository %s but current command is for %s", prevState.Repository, repoPath)
+	}
+
+	return prevState, nil
+}
+
+// prepareIncrementalMetadata loads previous metadata and prepares tracking for the new fetch.
+// Returns the metadata tracker and previous fetch reference.
+func prepareIncrementalMetadata(stateDir, repoPath string) (*metadata.Tracker, *metadata.FetchRef) {
+	tracker := metadata.New()
+
+	previousMetadata, err := metadata.LoadLatestMetadata(stateDir, repoPath)
+	if err != nil {
+		// Log warning but continue - metadata is optional
+		fmt.Fprintf(os.Stderr, "Warning: failed to load previous metadata: %v\n", err)
+	}
+
+	var previousFetch *metadata.FetchRef
+	if previousMetadata != nil {
+		previousFetch = &metadata.FetchRef{
+			FetchID:     previousMetadata.FetchID,
+			CompletedAt: previousMetadata.Results.CompletedAt,
+		}
+	}
+
+	return tracker, previousFetch
+}
+
+// processIncrementalPR processes a single PR during incremental fetch.
+// Returns true if the PR was new and written, false if it was skipped.
+func processIncrementalPR(pr *github.PullRequest, prevState, currentState *state.FetchState, writer output.OutputWriter, tracker *metadata.Tracker) (bool, error) {
+	// Skip PRs we've already seen (based on PR number)
+	if pr.Number <= prevState.LastPRNumber {
+		return false, nil
+	}
+
+	// Write new PR
+	if err := writer.Write(pr); err != nil {
+		return false, fmt.Errorf("failed to write PR: %w", err)
+	}
+
+	// Update metadata tracker
+	tracker.UpdatePRStats(pr.Number, pr.CreatedAt, pr.UpdatedAt)
+
+	// Update state tracking
+	if pr.Number > currentState.LastPRNumber {
+		currentState.LastPRNumber = pr.Number
+	}
+	if pr.CreatedAt.After(currentState.LastPRDate) {
+		currentState.LastPRDate = pr.CreatedAt
+	}
+
+	return true, nil
+}
+
+// saveIncrementalResults saves the state and metadata after an incremental fetch.
+func saveIncrementalResults(currentState *state.FetchState, stateFile string, newPRCount int, tracker *metadata.Tracker, metadataFile, owner, repo string, opts github.FetchOptions, fetchAll bool, pageSize int, previousFetch *metadata.FetchRef) error {
+	// Update final state
+	currentState.TotalFetched = newPRCount
+
+	// Save state
+	if err := state.SaveState(currentState, stateFile); err != nil {
+		return fmt.Errorf("failed to save state: %w", err)
+	}
+
+	// Generate and save metadata if we fetched any PRs
+	if newPRCount > 0 {
+		params := metadata.FetchParams{
+			Organization: owner,
+			Repository:   repo,
+			Since:        opts.Since,
+			Until:        opts.Until,
+			FetchAll:     fetchAll,
+			BatchSize:    pageSize,
+		}
+
+		fetchMetadata := tracker.GenerateMetadata(version.Version, params, true, previousFetch)
+
+		if err := saveMetadata(fetchMetadata, metadataFile); err != nil {
+			// Don't fail the fetch, just warn
+			fmt.Fprintf(os.Stderr, "Warning: failed to save fetch metadata: %v\n", err)
+		}
+	}
+
+	return nil
+}
+
+// fetchIncremental handles incremental fetching by loading previous state and resuming.
+func fetchIncremental(ctx context.Context, client github.Client, owner, repo string, writer output.OutputWriter, metadataFile string, sinceTime, untilTime *time.Time, fetchAll bool) error {
+	repoPath := fmt.Sprintf("%s/%s", owner, repo)
+	stateFile := state.GetStateFilePath(repoPath)
+
+	// Load and validate previous state
+	prevState, err := loadAndValidateIncrementalState(stateFile, repoPath)
+	if err != nil {
+		return err
 	}
 
 	// Use the last PR date as the starting point
@@ -478,6 +695,10 @@ func fetchIncremental(ctx context.Context, client github.Client, owner, repo str
 	}
 
 	fmt.Fprintf(os.Stderr, "Resuming from PR #%d (created %s)\n", prevState.LastPRNumber, prevState.LastPRDate.Format("2006-01-02"))
+
+	// Prepare metadata tracking
+	stateDir := filepath.Dir(stateFile)
+	tracker, previousFetch := prepareIncrementalMetadata(stateDir, repoPath)
 
 	// Track state for this fetch
 	currentState := &state.FetchState{
@@ -513,25 +734,17 @@ func fetchIncremental(ctx context.Context, client github.Client, owner, repo str
 			return err
 		}
 
+		// Track API call
+		tracker.IncrementAPICall()
+
 		// Process PRs with deduplication
 		for _, pr := range page.PullRequests {
-			// Skip PRs we've already seen (based on PR number)
-			if pr.Number <= prevState.LastPRNumber {
-				continue
+			isNew, err := processIncrementalPR(&pr, prevState, currentState, writer, tracker)
+			if err != nil {
+				return err
 			}
-
-			// Write new PR
-			if err := writer.Write(pr); err != nil {
-				return fmt.Errorf("failed to write PR: %w", err)
-			}
-			newPRCount++
-
-			// Update state tracking
-			if pr.Number > currentState.LastPRNumber {
-				currentState.LastPRNumber = pr.Number
-			}
-			if pr.CreatedAt.After(currentState.LastPRDate) {
-				currentState.LastPRDate = pr.CreatedAt
+			if isNew {
+				newPRCount++
 			}
 		}
 
@@ -539,12 +752,9 @@ func fetchIncremental(ctx context.Context, client github.Client, owner, repo str
 		hasMore = page.HasNextPage && (fetchAll || newPRCount == 0)
 	}
 
-	// Update final state
-	currentState.TotalFetched = newPRCount
-
-	// Save state
-	if err := state.SaveState(currentState, stateFile); err != nil {
-		return fmt.Errorf("failed to save state: %w", err)
+	// Save state and metadata
+	if err := saveIncrementalResults(currentState, stateFile, newPRCount, tracker, metadataFile, owner, repo, opts, fetchAll, pageSize, previousFetch); err != nil {
+		return err
 	}
 
 	fmt.Fprintf(os.Stderr, "Successfully fetched %d new pull requests\n", newPRCount)
