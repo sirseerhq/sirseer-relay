@@ -65,6 +65,8 @@ test-output/
 # Temporary files
 tmp/
 temp/
+relay
+test_output.log
 
 # Benchmark outputs
 benchmarks/

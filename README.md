@@ -104,6 +104,99 @@ sirseer-relay fetch owner/repo --since 2024-01-01 --until 2024-03-31
 - `--since` / `--until` - Filter by creation date
 - `--output` - Save to file (default: stdout)
 - `--token` - Override GITHUB_TOKEN env var
+- `--config` - Use custom config file
+- `--batch-size` - PRs per API call (1-100)
+- `--metadata-file` - Save fetch metadata
+
+## Configuration
+
+sirseer-relay supports YAML configuration files for advanced settings:
+
+### Configuration File Locations
+
+The tool looks for configuration in these locations (in order):
+1. Path specified with `--config` flag
+2. `.sirseer-relay.yaml` in current directory
+3. `~/.sirseer/config.yaml` (global config)
+
+### Example Configuration
+
+```yaml
+# GitHub Enterprise support
+github:
+  api_endpoint: https://github.company.com/api/v3
+  graphql_endpoint: https://github.company.com/api/graphql
+
+# Default settings
+defaults:
+  batch_size: 25
+  state_dir: ~/.sirseer/state
+
+# Repository-specific overrides
+repositories:
+  "large/repo":
+    batch_size: 10
+```
+
+See [`.sirseer-relay.example.yaml`](.sirseer-relay.example.yaml) for all available options.
+
+## Metadata Tracking
+
+sirseer-relay generates comprehensive metadata for each fetch operation, providing audit trails and performance metrics.
+
+### Metadata Output
+
+By default, metadata is saved to `fetch-metadata.json` in the current directory. Use `--metadata-file` to specify a custom location:
+
+```bash
+sirseer-relay fetch owner/repo --metadata-file /path/to/metadata.json
+```
+
+### Metadata Contents
+
+The metadata file captures:
+
+- **Fetch Parameters** - Repository, time windows, batch size
+- **Results Summary** - Total PRs, API calls, date ranges
+- **Performance Metrics** - Start/end times, duration
+- **Incremental Info** - Links to previous fetches (when applicable)
+
+Example metadata file:
+
+```json
+{
+  "relay_version": "v1.0.0",
+  "method_version": "graphql-all-in-one-v1",
+  "fetch_id": "full-1706274000",
+  "parameters": {
+    "organization": "golang",
+    "repository": "go",
+    "since": "2024-01-01T00:00:00Z",
+    "until": "2024-12-31T23:59:59Z",
+    "fetch_all": false,
+    "batch_size": 50
+  },
+  "results": {
+    "total_prs": 1523,
+    "first_pr_number": 64320,
+    "last_pr_number": 65843,
+    "oldest_pr_date": "2024-01-01T08:15:30Z",
+    "newest_pr_date": "2024-12-31T19:45:22Z",
+    "fetch_duration": "2m34s",
+    "api_calls_made": 31,
+    "started_at": "2024-01-26T10:00:00Z",
+    "completed_at": "2024-01-26T10:02:34Z"
+  },
+  "incremental": false
+}
+```
+
+### Use Cases
+
+- **Audit Trails** - Track what data was fetched and when
+- **Performance Monitoring** - Analyze API usage and fetch times
+- **Troubleshooting** - Debug issues with specific repositories
+- **Compliance** - Document data collection for regulatory requirements
 
 ## Documentation
 

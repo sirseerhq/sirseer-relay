@@ -128,6 +128,48 @@ jobs:
           name: sirseer-relay-${{ matrix.os }}-${{ matrix.arch }}
           path: sirseer-relay-*
 
+  version-injection:
+    name: Version Injection
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      
+      - name: Build with version injection
+        run: |
+          VERSION="v1.2.3-test"
+          go build -ldflags "-X github.com/sirseerhq/sirseer-relay/pkg/version.Version=$VERSION" \
+            -o sirseer-relay ./cmd/relay
+      
+      - name: Verify version injection
+        run: |
+          OUTPUT=$(./sirseer-relay --version 2>&1)
+          echo "Version output: $OUTPUT"
+          
+          # Check that injected version appears in output
+          if ! echo "$OUTPUT" | grep -q "v1.2.3-test"; then
+            echo "❌ Version injection failed: expected v1.2.3-test in output"
+            exit 1
+          fi
+          
+          # Check that BSL license info appears
+          if ! echo "$OUTPUT" | grep -q "Business Source License"; then
+            echo "❌ BSL license info missing from version output"
+            exit 1
+          fi
+          
+          if ! echo "$OUTPUT" | grep -q "2029"; then
+            echo "❌ BSL conversion date missing from version output"
+            exit 1
+          fi
+          
+          echo "✅ Version injection working correctly"
+
   memory-test:
     name: Memory Test
     runs-on: ubuntu-latest

@@ -10,9 +10,10 @@ This comprehensive guide covers all features and usage patterns for sirseer-rela
 4. [Time Window Filtering](#time-window-filtering)
 5. [Incremental Fetching](#incremental-fetching)
 6. [Output Options](#output-options)
-7. [Performance Tuning](#performance-tuning)
-8. [Enterprise Configuration](#enterprise-configuration)
-9. [Exit Codes](#exit-codes)
+7. [Configuration Files](#configuration-files)
+8. [Performance Tuning](#performance-tuning)
+9. [Enterprise Configuration](#enterprise-configuration)
+10. [Exit Codes](#exit-codes)
 
 ## Prerequisites
 
@@ -231,6 +232,80 @@ cat prs.ndjson | jq -r '[.number, .title] | @csv'
 ```bash
 cat prs.ndjson | jq 'select(.merged_at != null)'
 ```
+
+## Configuration Files
+
+sirseer-relay supports YAML configuration files for advanced settings and customization.
+
+### Configuration File Search Order
+
+The tool looks for configuration files in the following order:
+1. Path specified with `--config` flag
+2. `.sirseer-relay.yaml` in the current directory
+3. `~/.sirseer/config.yaml` (global configuration)
+
+### Basic Configuration Example
+
+Create `~/.sirseer/config.yaml`:
+
+```yaml
+# Default settings for all fetches
+defaults:
+  batch_size: 25
+  state_dir: ~/my-data/sirseer-state
+
+# Repository-specific settings
+repositories:
+  "kubernetes/kubernetes":
+    batch_size: 10  # Large PRs, use smaller batches
+```
+
+### Configuration Precedence
+
+Settings are applied in this order (highest precedence first):
+1. Command-line flags
+2. Environment variables
+3. Repository-specific configuration
+4. Global configuration file
+5. Built-in defaults
+
+### Available Configuration Options
+
+- **github.api_endpoint**: GitHub API base URL
+- **github.graphql_endpoint**: GitHub GraphQL endpoint
+- **github.token_env**: Environment variable name for token (default: GITHUB_TOKEN)
+- **defaults.batch_size**: PRs per API call (1-100)
+- **defaults.output_format**: Output format (currently only "ndjson")
+- **defaults.state_dir**: Directory for state files
+- **repositories**: Map of repo-specific overrides
+- **rate_limit.auto_wait**: Auto-wait on rate limit
+- **rate_limit.show_progress**: Show progress while waiting
+
+### Environment Variable Overrides
+
+You can override any configuration setting using environment variables:
+
+```bash
+# Override batch size
+export SIRSEER_BATCH_SIZE=30
+
+# Override state directory
+export SIRSEER_STATE_DIR=/custom/state
+
+# Override GitHub endpoints (for Enterprise)
+export GITHUB_API_ENDPOINT=https://github.company.com/api/v3
+export GITHUB_GRAPHQL_ENDPOINT=https://github.company.com/api/graphql
+```
+
+### Using Custom Config Files
+
+Specify a custom configuration file:
+
+```bash
+sirseer-relay --config /path/to/custom.yaml fetch org/repo --all
+```
+
+For a complete example with all available options, see [`.sirseer-relay.example.yaml`](../.sirseer-relay.example.yaml) in the project root.
 
 ## Performance Tuning
 
