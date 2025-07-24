@@ -27,6 +27,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/sirseerhq/sirseer-relay/test/testutil"
 )
 
 // TestRateLimitHandling tests various rate limit scenarios
@@ -35,7 +37,7 @@ func TestRateLimitHandling(t *testing.T) {
 		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
 	}
 
-	binaryPath := buildBinary(t)
+	binaryPath := testutil.BuildBinary(t)
 
 	tests := []struct {
 		name         string
@@ -118,7 +120,7 @@ func TestRateLimitHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testDir := t.TempDir()
+			testDir := testutil.CreateTempDir(t, "ratelimit-test")
 			outputFile := filepath.Join(testDir, "output.ndjson")
 			stateDir := filepath.Join(testDir, ".sirseer-relay")
 			os.MkdirAll(stateDir, 0755)
@@ -159,8 +161,8 @@ func TestRateLimitProgressBar(t *testing.T) {
 		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
 	}
 
-	binaryPath := buildBinary(t)
-	testDir := t.TempDir()
+	binaryPath := testutil.BuildBinary(t)
+	testDir := testutil.CreateTempDir(t, "ratelimit-test")
 	outputFile := filepath.Join(testDir, "output.ndjson")
 
 	// Server that rate limits with 3 second wait
@@ -324,7 +326,7 @@ func TestRateLimitEdgeCases(t *testing.T) {
 		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
 	}
 
-	binaryPath := buildBinary(t)
+	binaryPath := testutil.BuildBinary(t)
 
 	tests := []struct {
 		name      string
@@ -369,7 +371,7 @@ func TestRateLimitEdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testDir := t.TempDir()
+			testDir := testutil.CreateTempDir(t, "ratelimit-test")
 			outputFile := filepath.Join(testDir, "output.ndjson")
 
 			server := tt.setupMock()

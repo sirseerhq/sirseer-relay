@@ -73,3 +73,6 @@ benchmarks/
 
 # Performance reports (internal use only)
 PERFORMANCE_RESULTS.md
+
+# Test refactoring reports
+TEST_SUITE_REFINEMENT_REPORT.md

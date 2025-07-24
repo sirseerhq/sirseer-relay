@@ -15,30 +15,13 @@
 package integration
 
 import (
-	"bytes"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sirseerhq/sirseer-relay/test/testutil"
 )
 
-func buildBinary(t *testing.T) string {
-	// Build binary in temp directory
-	tmpDir := t.TempDir()
-	binaryPath := filepath.Join(tmpDir, "sirseer-relay")
-
-	cmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd/relay")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("Failed to build binary: %v\nOutput: %s", err, output)
-	}
-
-	return binaryPath
-}
-
 func TestCLI_InvalidRepoFormat(t *testing.T) {
-	binaryPath := buildBinary(t)
-
 	tests := []struct {
 		name    string
 		repo    string
@@ -50,75 +33,52 @@ func TestCLI_InvalidRepoFormat(t *testing.T) {
 			wantErr: "invalid repository format",
 		},
 		{
-			name:    "too many slashes",
-			repo:    "org/repo/extra",
-			wantErr: "invalid repository format",
-		},
-		{
 			name:    "empty owner",
 			repo:    "/repo",
 			wantErr: "invalid repository format",
 		},
 		{
 			name:    "empty repo",
-			repo:    "org/",
+			repo:    "owner/",
+			wantErr: "invalid repository format",
+		},
+		{
+			name:    "too many slashes",
+			repo:    "owner/repo/extra",
 			wantErr: "invalid repository format",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := exec.Command(binaryPath, "fetch", tt.repo)
-
-			var stderr bytes.Buffer
-			cmd.Stderr = &stderr
-
-			err := cmd.Run()
-			if err == nil {
-				t.Fatal("Expected command to fail")
-			}
-
-			// Verify error message
-			stderrStr := stderr.String()
-			if !strings.Contains(stderrStr, tt.wantErr) {
-				t.Errorf("Expected error containing %q, got: %s", tt.wantErr, stderrStr)
-			}
+			result := testutil.RunCLI(t, []string{"fetch", tt.repo}, nil)
+			testutil.AssertCLIError(t, result, tt.wantErr)
 		})
 	}
 }
 
 func TestCLI_MissingToken(t *testing.T) {
-	binaryPath := buildBinary(t)
-
-	// Clear any existing GITHUB_TOKEN
-	cmd := exec.Command(binaryPath, "fetch", "test/repo")
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	if err == nil {
-		t.Fatal("Expected command to fail")
+	// Clear any existing GITHUB_TOKEN by providing minimal env
+	env := map[string]string{
+		"PATH": "/usr/bin:/bin", // Minimal PATH
 	}
-
-	// Verify error message
-	stderrStr := stderr.String()
-	if !strings.Contains(stderrStr, "GitHub token not found") {
-		t.Errorf("Expected missing token error, got: %s", stderrStr)
-	}
+	
+	result := testutil.RunCLI(t, []string{"fetch", "test/repo"}, env)
+	testutil.AssertCLIError(t, result, "GitHub token not found")
 }
 
 func TestCLI_HelpCommand(t *testing.T) {
-	binaryPath := buildBinary(t)
-
 	tests := []struct {
 		name string
 		args []string
 	}{
 		{
-			name: "main help",
+			name: "root help",
 			args: []string{"--help"},
+		},
+		{
+			name: "help command",
+			args: []string{"help"},
 		},
 		{
 			name: "fetch help",
@@ -128,32 +88,23 @@ func TestCLI_HelpCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := exec.Command(binaryPath, tt.args...)
-
-			var stdout bytes.Buffer
-			cmd.Stdout = &stdout
-
-			err := cmd.Run()
-			if err != nil {
-				t.Fatalf("Help command failed: %v", err)
-			}
-
-			output := stdout.String()
+			result := testutil.RunCLI(t, tt.args, nil)
+			testutil.AssertCLISuccess(t, result)
 
 			// Verify help content
-			if !strings.Contains(output, "sirseer-relay") {
+			if !strings.Contains(result.Stdout, "sirseer-relay") {
 				t.Error("Expected binary name in help output")
 			}
 
 			if len(tt.args) > 1 && tt.args[0] == "fetch" {
 				// Fetch-specific help
-				if !strings.Contains(output, "--all") {
+				if !strings.Contains(result.Stdout, "--all") {
 					t.Error("Expected --all flag in fetch help")
 				}
-				if !strings.Contains(output, "--request-timeout") {
+				if !strings.Contains(result.Stdout, "--request-timeout") {
 					t.Error("Expected --request-timeout flag in fetch help")
 				}
-				if !strings.Contains(output, "Fetch all pull requests from the repository") {
+				if !strings.Contains(result.Stdout, "Fetch all pull requests from the repository") {
 					t.Error("Expected --all flag description")
 				}
 			}
@@ -162,56 +113,34 @@ func TestCLI_HelpCommand(t *testing.T) {
 }
 
 func TestCLI_VersionFlag(t *testing.T) {
-	binaryPath := buildBinary(t)
-
-	cmd := exec.Command(binaryPath, "--version")
-
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-
-	err := cmd.Run()
-	if err != nil {
-		t.Fatalf("Version flag failed: %v", err)
-	}
-
-	output := stdout.String()
+	result := testutil.RunCLI(t, []string{"--version"}, nil)
+	testutil.AssertCLISuccess(t, result)
 
 	// Version should contain "sirseer-relay" and a version
-	if !strings.Contains(output, "sirseer-relay") {
+	if !strings.Contains(result.Stdout, "sirseer-relay") {
 		t.Error("Expected binary name in version output")
 	}
 }
 
 func TestCLI_Flags(t *testing.T) {
-	binaryPath := buildBinary(t)
-
 	// Test with all flags (will fail due to no token, but we can verify parsing)
-	cmd := exec.Command(binaryPath, "fetch", "test/repo",
+	args := []string{
+		"fetch", "test/repo",
 		"--output", "test.ndjson",
 		"--all",
 		"--request-timeout", "300",
 		"--since", "2024-01-01",
 		"--until", "2024-12-31",
-		"--incremental")
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	if err == nil {
-		t.Fatal("Expected command to fail (no token)")
+		"--incremental",
 	}
-
+	
+	result := testutil.RunCLI(t, args, nil)
+	
 	// Should fail with missing token, not flag parsing error
-	stderrStr := stderr.String()
-	if !strings.Contains(stderrStr, "GitHub token not found") {
-		t.Errorf("Expected missing token error, got: %s", stderrStr)
-	}
+	testutil.AssertCLIError(t, result, "GitHub token not found")
 }
 
 func TestCLI_InvalidFlags(t *testing.T) {
-	binaryPath := buildBinary(t)
-
 	tests := []struct {
 		name    string
 		args    []string
@@ -241,78 +170,75 @@ func TestCLI_InvalidFlags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := exec.Command(binaryPath, tt.args...)
-
-			var stderr bytes.Buffer
-			cmd.Stderr = &stderr
-
-			err := cmd.Run()
-			if err == nil {
-				t.Fatal("Expected command to fail")
-			}
-
-			stderrStr := stderr.String()
-			if !strings.Contains(strings.ToLower(stderrStr), tt.wantErr) {
-				t.Errorf("Expected error containing %q, got: %s", tt.wantErr, stderrStr)
-			}
+			result := testutil.RunCLI(t, tt.args, nil)
+			testutil.AssertCLIError(t, result, tt.wantErr)
 		})
 	}
 }
 
-// TestCLI_ExitCodes verifies that the CLI returns appropriate exit codes
-func TestCLI_ExitCodes(t *testing.T) {
-	binaryPath := buildBinary(t)
-
+func TestCLI_DateFormats(t *testing.T) {
 	tests := []struct {
-		name         string
-		args         []string
-		env          []string
-		wantExitCode int
+		name       string
+		sinceDate  string
+		untilDate  string
+		shouldFail bool
+		errMsg     string
 	}{
 		{
-			name:         "missing token",
-			args:         []string{"fetch", "test/repo"},
-			env:          []string{"PATH=" + os.Getenv("PATH")},
-			wantExitCode: 1,
+			name:       "valid date formats",
+			sinceDate:  "2024-01-01",
+			untilDate:  "2024-12-31",
+			shouldFail: true, // Still fails due to test token
+			errMsg:     "GitHub API authentication failed",
 		},
 		{
-			name:         "invalid repo format",
-			args:         []string{"fetch", "invalid"},
-			wantExitCode: 1,
+			name:       "invalid since date",
+			sinceDate:  "01-01-2024", // Wrong format
+			untilDate:  "2024-12-31",
+			shouldFail: true,
+			errMsg:     "invalid --since date format",
 		},
 		{
-			name:         "help command",
-			args:         []string{"--help"},
-			wantExitCode: 0,
-		},
-		{
-			name:         "version flag",
-			args:         []string{"--version"},
-			wantExitCode: 0,
+			name:       "invalid until date",
+			sinceDate:  "2024-01-01",
+			untilDate:  "2024/12/31", // Wrong format
+			shouldFail: true,
+			errMsg:     "invalid --until date format",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := exec.Command(binaryPath, tt.args...)
-			if tt.env != nil {
-				cmd.Env = tt.env
+			args := []string{"fetch", "test/repo"}
+			if tt.sinceDate != "" {
+				args = append(args, "--since", tt.sinceDate)
+			}
+			if tt.untilDate != "" {
+				args = append(args, "--until", tt.untilDate)
 			}
 
-			err := cmd.Run()
+			// Provide a token to get past token validation
+			env := map[string]string{"GITHUB_TOKEN": "test-token"}
+			result := testutil.RunCLI(t, args, env)
 
-			exitCode := 0
-			if err != nil {
-				if exitErr, ok := err.(*exec.ExitError); ok {
-					exitCode = exitErr.ExitCode()
-				} else {
-					t.Fatalf("Unexpected error type: %v", err)
-				}
-			}
-
-			if exitCode != tt.wantExitCode {
-				t.Errorf("Expected exit code %d, got %d", tt.wantExitCode, exitCode)
+			if tt.shouldFail {
+				testutil.AssertCLIError(t, result, tt.errMsg)
+			} else {
+				testutil.AssertCLISuccess(t, result)
 			}
 		})
 	}
+}
+
+func TestCLI_ConflictingFlags(t *testing.T) {
+	t.Skip("Flag conflict validation not yet implemented")
+	// Test that --all and --incremental are mutually exclusive
+	args := []string{
+		"fetch", "test/repo",
+		"--all",
+		"--incremental",
+	}
+	
+	result := testutil.RunCLI(t, args, nil)
+	testutil.AssertCLIError(t, result, "--all and --incremental flags are mutually exclusive")
 }

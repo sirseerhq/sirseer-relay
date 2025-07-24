@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/sirseerhq/sirseer-relay/internal/metadata"
+	"github.com/sirseerhq/sirseer-relay/test/testutil"
 )
 
 func TestConfigPrecedence_CLIOverridesAll(t *testing.T) {
@@ -31,8 +32,8 @@ func TestConfigPrecedence_CLIOverridesAll(t *testing.T) {
 		t.Skip("Skipping test: GITHUB_TOKEN not set")
 	}
 
-	binaryPath := buildBinary(t)
-	tmpDir := t.TempDir()
+	binaryPath := testutil.BuildBinary(t)
+	tmpDir := testutil.CreateTempDir(t, "config-test")
 
 	// Create config file with batch size 75
 	configFile := filepath.Join(tmpDir, ".sirseer-relay.yaml")
@@ -82,8 +83,8 @@ func TestConfigPrecedence_EnvOverridesFile(t *testing.T) {
 		t.Skip("Skipping test: GITHUB_TOKEN not set")
 	}
 
-	binaryPath := buildBinary(t)
-	tmpDir := t.TempDir()
+	binaryPath := testutil.BuildBinary(t)
+	tmpDir := testutil.CreateTempDir(t, "config-test")
 
 	// Create config file with batch size 75
 	configFile := filepath.Join(tmpDir, ".sirseer-relay.yaml")
@@ -133,8 +134,8 @@ func TestConfigFile_DefaultLocations(t *testing.T) {
 		t.Skip("Skipping test: GITHUB_TOKEN not set")
 	}
 
-	binaryPath := buildBinary(t)
-	tmpDir := t.TempDir()
+	binaryPath := testutil.BuildBinary(t)
+	tmpDir := testutil.CreateTempDir(t, "config-test")
 
 	// Change to temp directory
 	originalWd, err := os.Getwd()
@@ -190,8 +191,8 @@ func TestConfigFile_RepositoryOverrides(t *testing.T) {
 		t.Skip("Skipping test: GITHUB_TOKEN not set")
 	}
 
-	binaryPath := buildBinary(t)
-	tmpDir := t.TempDir()
+	binaryPath := testutil.BuildBinary(t)
+	tmpDir := testutil.CreateTempDir(t, "config-test")
 
 	// Create config file with repository-specific override
 	configFile := filepath.Join(tmpDir, ".sirseer-relay.yaml")
@@ -238,8 +239,8 @@ repositories:
 }
 
 func TestConfigFile_GitHubEnterprise(t *testing.T) {
-	binaryPath := buildBinary(t)
-	tmpDir := t.TempDir()
+	binaryPath := testutil.BuildBinary(t)
+	tmpDir := testutil.CreateTempDir(t, "config-test")
 
 	// Create config file with GitHub Enterprise endpoints
 	configFile := filepath.Join(tmpDir, ".sirseer-relay.yaml")
@@ -281,8 +282,8 @@ github:
 }
 
 func TestConfigFile_InvalidConfig(t *testing.T) {
-	binaryPath := buildBinary(t)
-	tmpDir := t.TempDir()
+	binaryPath := testutil.BuildBinary(t)
+	tmpDir := testutil.CreateTempDir(t, "config-test")
 
 	tests := []struct {
 		name      string
@@ -355,8 +356,8 @@ func TestConfigFile_StateDirExpansion(t *testing.T) {
 		t.Skip("Skipping test: GITHUB_TOKEN not set")
 	}
 
-	binaryPath := buildBinary(t)
-	tmpDir := t.TempDir()
+	binaryPath := testutil.BuildBinary(t)
+	tmpDir := testutil.CreateTempDir(t, "config-test")
 
 	// Create a custom state directory
 	customStateDir := filepath.Join(tmpDir, "custom-state")

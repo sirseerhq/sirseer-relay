@@ -27,6 +27,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/sirseerhq/sirseer-relay/test/testutil"
 )
 
 // TestFlagMatrix tests all combinations of CLI flags with various scenarios
@@ -35,7 +37,7 @@ func TestFlagMatrix(t *testing.T) {
 		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
 	}
 
-	binaryPath := buildBinary(t)
+	binaryPath := testutil.BuildBinary(t)
 
 	// Test matrix covering all flag combinations
 	tests := []struct {
@@ -156,7 +158,7 @@ func TestFlagMatrix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create test directory
-			testDir := t.TempDir()
+			testDir := testutil.CreateTempDir(t, "flag-matrix-test")
 			stateDir := filepath.Join(testDir, ".sirseer-relay")
 			os.MkdirAll(stateDir, 0755)
 
