@@ -23,6 +23,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/sirseerhq/sirseer-relay/test/testutil"
 )
 
 func TestGetStateFilePath(t *testing.T) {
@@ -79,9 +81,7 @@ func TestSaveAndLoadState(t *testing.T) {
 	}
 
 	// Verify file exists
-	if _, err := os.Stat(stateFile); err != nil {
-		t.Fatalf("State file not created: %v", err)
-	}
+	testutil.AssertFileExists(t, stateFile)
 
 	// Test loading state
 	loadedState, err := LoadState(stateFile)
@@ -108,7 +108,7 @@ func TestSaveAndLoadState(t *testing.T) {
 }
 
 func TestLoadState_FileNotExist(t *testing.T) {
-	tempDir := t.TempDir()
+	tempDir := testutil.CreateTempDir(t, "state-test")
 	stateFile := filepath.Join(tempDir, "nonexistent.state")
 
 	_, err := LoadState(stateFile)
@@ -121,7 +121,7 @@ func TestLoadState_FileNotExist(t *testing.T) {
 }
 
 func TestLoadState_CorruptedJSON(t *testing.T) {
-	tempDir := t.TempDir()
+	tempDir := testutil.CreateTempDir(t, "state-test")
 	stateFile := filepath.Join(tempDir, "corrupted.state")
 
 	// Write invalid JSON
@@ -139,7 +139,7 @@ func TestLoadState_CorruptedJSON(t *testing.T) {
 }
 
 func TestLoadState_ChecksumMismatch(t *testing.T) {
-	tempDir := t.TempDir()
+	tempDir := testutil.CreateTempDir(t, "state-test")
 	stateFile := filepath.Join(tempDir, "tampered.state")
 
 	// Create a valid state
@@ -178,7 +178,7 @@ func TestLoadState_ChecksumMismatch(t *testing.T) {
 }
 
 func TestLoadState_VersionMismatch(t *testing.T) {
-	tempDir := t.TempDir()
+	tempDir := testutil.CreateTempDir(t, "state-test")
 	stateFile := filepath.Join(tempDir, "oldversion.state")
 
 	// Create state with old version
@@ -214,7 +214,7 @@ func TestLoadState_VersionMismatch(t *testing.T) {
 }
 
 func TestAtomicWrite(t *testing.T) {
-	tempDir := t.TempDir()
+	tempDir := testutil.CreateTempDir(t, "state-test")
 	stateFile := filepath.Join(tempDir, "atomic.state")
 
 	// Create initial state
@@ -252,7 +252,7 @@ func TestAtomicWrite(t *testing.T) {
 }
 
 func TestDeleteState(t *testing.T) {
-	tempDir := t.TempDir()
+	tempDir := testutil.CreateTempDir(t, "state-test")
 	stateFile := filepath.Join(tempDir, "delete.state")
 
 	// Create a state file
@@ -270,9 +270,7 @@ func TestDeleteState(t *testing.T) {
 	}
 
 	// Verify it's gone
-	if _, err := os.Stat(stateFile); !os.IsNotExist(err) {
-		t.Error("State file still exists after deletion")
-	}
+	testutil.AssertFileNotExists(t, stateFile)
 
 	// Delete non-existent file should not error
 	if err := DeleteState(stateFile); err != nil {
@@ -281,7 +279,7 @@ func TestDeleteState(t *testing.T) {
 }
 
 func TestConcurrentAccess(t *testing.T) {
-	tempDir := t.TempDir()
+	tempDir := testutil.CreateTempDir(t, "state-test")
 	stateFile := filepath.Join(tempDir, "concurrent.state")
 
 	// Run multiple goroutines trying to save state

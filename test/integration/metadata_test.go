@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/sirseerhq/sirseer-relay/internal/metadata"
+	"github.com/sirseerhq/sirseer-relay/test/testutil"
 )
 
 func TestMetadataGeneration_BasicFetch(t *testing.T) {
@@ -31,8 +32,8 @@ func TestMetadataGeneration_BasicFetch(t *testing.T) {
 		t.Skip("Skipping test: GITHUB_TOKEN not set")
 	}
 
-	binaryPath := buildBinary(t)
-	tmpDir := t.TempDir()
+	binaryPath := testutil.BuildBinary(t)
+	tmpDir := testutil.CreateTempDir(t, "metadata-test")
 
 	// Run a small fetch that should generate metadata
 	outputFile := filepath.Join(tmpDir, "test.ndjson")
@@ -113,8 +114,8 @@ func TestMetadataGeneration_DefaultLocation(t *testing.T) {
 		t.Skip("Skipping test: GITHUB_TOKEN not set")
 	}
 
-	binaryPath := buildBinary(t)
-	tmpDir := t.TempDir()
+	binaryPath := testutil.BuildBinary(t)
+	tmpDir := testutil.CreateTempDir(t, "metadata-test")
 
 	// Change to temp directory to test default metadata location
 	originalWd, err := os.Getwd()
@@ -162,8 +163,8 @@ func TestMetadataGeneration_TimeWindows(t *testing.T) {
 		t.Skip("Skipping test: GITHUB_TOKEN not set")
 	}
 
-	binaryPath := buildBinary(t)
-	tmpDir := t.TempDir()
+	binaryPath := testutil.BuildBinary(t)
+	tmpDir := testutil.CreateTempDir(t, "metadata-test")
 
 	outputFile := filepath.Join(tmpDir, "test.ndjson")
 	metadataFile := filepath.Join(tmpDir, "fetch-metadata.json")
@@ -213,8 +214,8 @@ func TestMetadataGeneration_IncrementalFetch(t *testing.T) {
 		t.Skip("Skipping test: GITHUB_TOKEN not set")
 	}
 
-	binaryPath := buildBinary(t)
-	tmpDir := t.TempDir()
+	binaryPath := testutil.BuildBinary(t)
+	tmpDir := testutil.CreateTempDir(t, "metadata-test")
 
 	// First, do a full fetch
 	outputFile1 := filepath.Join(tmpDir, "test1.ndjson")
@@ -284,8 +285,8 @@ func TestMetadataGeneration_BatchSize(t *testing.T) {
 		t.Skip("Skipping test: GITHUB_TOKEN not set")
 	}
 
-	binaryPath := buildBinary(t)
-	tmpDir := t.TempDir()
+	binaryPath := testutil.BuildBinary(t)
+	tmpDir := testutil.CreateTempDir(t, "metadata-test")
 
 	outputFile := filepath.Join(tmpDir, "test.ndjson")
 	metadataFile := filepath.Join(tmpDir, "fetch-metadata.json")
@@ -328,8 +329,8 @@ func TestMetadataGeneration_FetchAll(t *testing.T) {
 		t.Skip("Skipping test: GITHUB_TOKEN not set")
 	}
 
-	binaryPath := buildBinary(t)
-	tmpDir := t.TempDir()
+	binaryPath := testutil.BuildBinary(t)
+	tmpDir := testutil.CreateTempDir(t, "metadata-test")
 
 	outputFile := filepath.Join(tmpDir, "test.ndjson")
 	metadataFile := filepath.Join(tmpDir, "fetch-metadata.json")

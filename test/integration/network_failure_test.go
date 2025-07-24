@@ -29,6 +29,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/sirseerhq/sirseer-relay/test/testutil"
 )
 
 // TestNetworkFailureRecovery tests various network failure scenarios and recovery
@@ -37,7 +39,7 @@ func TestNetworkFailureRecovery(t *testing.T) {
 		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
 	}
 
-	binaryPath := buildBinary(t)
+	binaryPath := testutil.BuildBinary(t)
 
 	tests := []struct {
 		name         string
@@ -147,7 +149,7 @@ func TestNetworkFailureRecovery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testDir := t.TempDir()
+			testDir := testutil.CreateTempDir(t, "network-test")
 			outputFile := filepath.Join(testDir, "output.ndjson")
 			stateDir := filepath.Join(testDir, ".sirseer-relay")
 			os.MkdirAll(stateDir, 0755)
@@ -199,8 +201,8 @@ func TestNetworkFailureWithState(t *testing.T) {
 		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
 	}
 
-	binaryPath := buildBinary(t)
-	testDir := t.TempDir()
+	binaryPath := testutil.BuildBinary(t)
+	testDir := testutil.CreateTempDir(t, "network-test")
 	outputFile := filepath.Join(testDir, "output.ndjson")
 	stateDir := filepath.Join(testDir, ".sirseer-relay")
 	os.MkdirAll(stateDir, 0755)
@@ -434,8 +436,8 @@ func TestNetworkResilienceStressTest(t *testing.T) {
 		t.Skip("Skipping stress test. Set INTEGRATION_TEST=true and STRESS_TEST=true to run.")
 	}
 
-	binaryPath := buildBinary(t)
-	testDir := t.TempDir()
+	binaryPath := testutil.BuildBinary(t)
+	testDir := testutil.CreateTempDir(t, "network-test")
 	outputFile := filepath.Join(testDir, "output.ndjson")
 
 	// Server with random failures
