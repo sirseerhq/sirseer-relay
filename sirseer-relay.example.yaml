@@ -1,0 +1,73 @@
+# SirSeer Relay Configuration Example
+#
+# This file demonstrates all available configuration options.
+# Copy this to .sirseer-relay.yaml and customize as needed.
+#
+# Configuration precedence (highest to lowest):
+#   1. Command-line flags
+#   2. Environment variables
+#   3. Repository-specific config
+#   4. This configuration file
+#   5. Built-in defaults
+
+# GitHub API configuration
+github:
+  # API endpoints for GitHub.com (default)
+  api_endpoint: https://api.github.com
+  graphql_endpoint: https://api.github.com/graphql
+  
+  # For GitHub Enterprise, use your organization's endpoints:
+  # api_endpoint: https://github.enterprise.example.com/api/v3
+  # graphql_endpoint: https://github.enterprise.example.com/api/graphql
+  
+  # Environment variable for GitHub token (default: GITHUB_TOKEN)
+  # You can use a custom variable name if needed
+  token_env: GITHUB_TOKEN
+  # token_env: GITHUB_ENTERPRISE_TOKEN
+
+# Default settings for all repositories
+defaults:
+  # Number of PRs to fetch per API call (1-100, default: 50)
+  # Lower values reduce memory usage and API complexity
+  batch_size: 50
+  
+  # Output format (currently only ndjson is supported)
+  output_format: ndjson
+  
+  # Directory for state files used in incremental fetches
+  # Supports ~ for home directory and environment variables
+  state_dir: ~/.sirseer/state
+  # state_dir: ${XDG_STATE_HOME}/sirseer  # Alternative using XDG
+
+# Repository-specific overrides
+# Use "owner/repo" format as keys
+repositories:
+  # Example: Large repository with complex PRs
+  "kubernetes/kubernetes":
+    batch_size: 25  # Reduce batch size to avoid API complexity errors
+  
+  # Example: Small internal repository
+  "myorg/small-repo":
+    batch_size: 100  # Maximum batch size for faster fetching
+  
+  # Example: Repository with special requirements
+  "torvalds/linux":
+    batch_size: 10  # Very large PRs, use small batches
+
+# Rate limit handling configuration
+rate_limit:
+  # Automatically wait when rate limited (default: true)
+  # If false, the tool will exit with an error when rate limited
+  auto_wait: true
+  
+  # Show progress bar while waiting for rate limit reset (default: true)
+  show_progress: true
+
+# Environment variable overrides
+# These environment variables can override config values:
+#
+# GITHUB_API_ENDPOINT        - Override github.api_endpoint
+# GITHUB_GRAPHQL_ENDPOINT    - Override github.graphql_endpoint
+# SIRSEER_BATCH_SIZE         - Override defaults.batch_size
+# SIRSEER_STATE_DIR          - Override defaults.state_dir
+# SIRSEER_RATE_LIMIT_AUTO_WAIT - Override rate_limit.auto_wait (true/false)
