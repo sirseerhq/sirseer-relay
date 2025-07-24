@@ -158,17 +158,9 @@ func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile, metadataFile 
 	}
 
 	// Create output writer
-	var writer output.OutputWriter
-	if outputFile == "" {
-		// Write to stdout
-		writer = output.NewWriter(os.Stdout)
-	} else {
-		// Write to file
-		fileWriter, fErr := output.NewFileWriter(outputFile)
-		if fErr != nil {
-			return fmt.Errorf("failed to create output file: %w", fErr)
-		}
-		writer = fileWriter
+	writer, err := createOutputWriter(outputFile)
+	if err != nil {
+		return err
 	}
 	defer writer.Close()
 
@@ -176,26 +168,10 @@ func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile, metadataFile 
 	// TODO: Update github package to accept custom endpoints
 	client := github.NewGraphQLClient(token)
 
-	// Parse date flags
-	var sinceTime, untilTime *time.Time
-	if since != "" {
-		parsed, err := parseDate(since)
-		if err != nil {
-			return fmt.Errorf("invalid --since date format: %w", err)
-		}
-		sinceTime = &parsed
-	}
-	if until != "" {
-		parsed, err := parseDate(until)
-		if err != nil {
-			return fmt.Errorf("invalid --until date format: %w", err)
-		}
-		untilTime = &parsed
-	}
-
-	// Validate date range
-	if sinceTime != nil && untilTime != nil && sinceTime.After(*untilTime) {
-		return fmt.Errorf("--since date must be before --until date")
+	// Parse and validate date flags
+	sinceTime, untilTime, err := parseDateFlags(since, until)
+	if err != nil {
+		return err
 	}
 
 	// Handle incremental fetch
@@ -217,6 +193,49 @@ func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile, metadataFile 
 
 	// Default behavior: fetch first page only
 	return fetchFirstPageWithOptions(ctx, client, owner, repo, writer, metadataFile, opts)
+}
+
+// createOutputWriter creates an output writer based on the output file parameter.
+// If outputFile is empty, it writes to stdout. Otherwise, it creates a file writer.
+func createOutputWriter(outputFile string) (output.OutputWriter, error) {
+	if outputFile == "" {
+		// Write to stdout
+		return output.NewWriter(os.Stdout), nil
+	}
+
+	// Write to file
+	fileWriter, err := output.NewFileWriter(outputFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create output file: %w", err)
+	}
+	return fileWriter, nil
+}
+
+// parseDateFlags parses and validates the since and until date flags.
+// It returns parsed time pointers and ensures that since is before until if both are provided.
+func parseDateFlags(since, until string) (sinceTime *time.Time, untilTime *time.Time, err error) {
+	if since != "" {
+		parsed, parseErr := parseDate(since)
+		if parseErr != nil {
+			return nil, nil, fmt.Errorf("invalid --since date format: %w", parseErr)
+		}
+		sinceTime = &parsed
+	}
+
+	if until != "" {
+		parsed, parseErr := parseDate(until)
+		if parseErr != nil {
+			return nil, nil, fmt.Errorf("invalid --until date format: %w", parseErr)
+		}
+		untilTime = &parsed
+	}
+
+	// Validate date range
+	if sinceTime != nil && untilTime != nil && sinceTime.After(*untilTime) {
+		return nil, nil, fmt.Errorf("--since date must be before --until date")
+	}
+
+	return sinceTime, untilTime, nil
 }
 
 // parseDate parses a date string in various formats.
@@ -417,31 +436,19 @@ func fetchAllPullRequestsWithOptions(ctx context.Context, client github.Client, 
 	tracker := metadata.New()
 
 	// Initialize progress tracking
-	var (
-		allPRsProcessed = 0
-		cursor          = ""
-		hasMore         = true
-		startTime       = time.Now()
-		pageSize        = 50
-		pageNum         = 0
-		lastPRNumber    = 0
-		lastPRDate      time.Time
-	)
+	progress := initializeProgress(totalPRs, owner, repo)
 
-	// Show initial progress
-	fmt.Fprintf(os.Stderr, "Fetching all %d pull requests from %s/%s...\n", totalPRs, owner, repo)
-
-	for hasMore {
-		pageNum++
+	for progress.hasMore {
+		progress.pageNum++
 		pageOpts := github.FetchOptions{
-			PageSize: pageSize,
-			After:    cursor,
+			PageSize: progress.pageSize,
+			After:    progress.cursor,
 			Since:    opts.Since,
 			Until:    opts.Until,
 		}
 
 		// Fetch page with retry on complexity errors
-		page, err := fetchWithComplexityRetry(ctx, client, owner, repo, pageOpts, &pageSize)
+		page, err := fetchWithComplexityRetry(ctx, client, owner, repo, pageOpts, &progress.pageSize)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\r\033[K") // Clear progress line
 			return err
@@ -450,49 +457,91 @@ func fetchAllPullRequestsWithOptions(ctx context.Context, client github.Client, 
 		// Track API call
 		tracker.IncrementAPICall()
 
-		// Stream PRs immediately
-		for _, pr := range page.PullRequests {
-			if err := writer.Write(pr); err != nil {
-				return fmt.Errorf("failed to write PR: %w", err)
-			}
-			allPRsProcessed++
-
-			// Update metadata tracker
-			tracker.UpdatePRStats(pr.Number, pr.CreatedAt, pr.UpdatedAt)
-
-			// Track last PR for state
-			if pr.Number > lastPRNumber {
-				lastPRNumber = pr.Number
-			}
-			if pr.CreatedAt.After(lastPRDate) {
-				lastPRDate = pr.CreatedAt
-			}
-
-			// Update progress with ETA
-			updateProgress(allPRsProcessed, totalPRs, pageNum, startTime)
+		// Process batch of PRs
+		if err := processFetchBatch(page.PullRequests, writer, tracker, progress); err != nil {
+			return err
 		}
 
-		cursor = page.EndCursor
-		hasMore = page.HasNextPage
+		progress.cursor = page.EndCursor
+		progress.hasMore = page.HasNextPage
 	}
 
+	// Finalize results and save state/metadata
+	return finalizeFetchResults(owner, repo, progress, tracker, metadataFile, opts)
+}
+
+// progressTracker holds the state for tracking fetch progress.
+type progressTracker struct {
+	allPRsProcessed int
+	cursor          string
+	hasMore         bool
+	startTime       time.Time
+	pageSize        int
+	pageNum         int
+	lastPRNumber    int
+	lastPRDate      time.Time
+	totalPRs        int
+}
+
+// initializeProgress sets up progress tracking for fetching all PRs.
+func initializeProgress(totalPRs int, owner, repo string) *progressTracker {
+	fmt.Fprintf(os.Stderr, "Fetching all %d pull requests from %s/%s...\n", totalPRs, owner, repo)
+	return &progressTracker{
+		allPRsProcessed: 0,
+		cursor:          "",
+		hasMore:         true,
+		startTime:       time.Now(),
+		pageSize:        50,
+		pageNum:         0,
+		lastPRNumber:    0,
+		totalPRs:        totalPRs,
+	}
+}
+
+// processFetchBatch writes PRs to output and updates tracking information.
+func processFetchBatch(prs []github.PullRequest, writer output.OutputWriter, tracker *metadata.Tracker, progress *progressTracker) error {
+	for _, pr := range prs {
+		if err := writer.Write(pr); err != nil {
+			return fmt.Errorf("failed to write PR: %w", err)
+		}
+		progress.allPRsProcessed++
+
+		// Update metadata tracker
+		tracker.UpdatePRStats(pr.Number, pr.CreatedAt, pr.UpdatedAt)
+
+		// Track last PR for state
+		if pr.Number > progress.lastPRNumber {
+			progress.lastPRNumber = pr.Number
+		}
+		if pr.CreatedAt.After(progress.lastPRDate) {
+			progress.lastPRDate = pr.CreatedAt
+		}
+
+		// Update progress with ETA
+		updateProgress(progress.allPRsProcessed, progress.totalPRs, progress.pageNum, progress.startTime)
+	}
+	return nil
+}
+
+// finalizeFetchResults saves state and metadata after completing the fetch.
+func finalizeFetchResults(owner, repo string, progress *progressTracker, tracker *metadata.Tracker, metadataFile string, opts github.FetchOptions) error {
 	// Final message
 	fmt.Fprintf(os.Stderr, "\r\033[K") // Clear progress line
-	elapsed := time.Since(startTime)
-	fmt.Fprintf(os.Stderr, "Successfully fetched all %d pull requests in %s\n", allPRsProcessed, elapsed.Round(time.Second))
+	elapsed := time.Since(progress.startTime)
+	fmt.Fprintf(os.Stderr, "Successfully fetched all %d pull requests in %s\n", progress.allPRsProcessed, elapsed.Round(time.Second))
 
 	// Save state if we fetched any PRs
-	if allPRsProcessed > 0 && lastPRNumber > 0 {
+	if progress.allPRsProcessed > 0 && progress.lastPRNumber > 0 {
 		repoPath := fmt.Sprintf("%s/%s", owner, repo)
 		stateFile := state.GetStateFilePath(repoPath)
 
 		fetchState := &state.FetchState{
 			Repository:    repoPath,
 			LastFetchID:   fmt.Sprintf("full-%d", time.Now().Unix()),
-			LastPRNumber:  lastPRNumber,
-			LastPRDate:    lastPRDate,
+			LastPRNumber:  progress.lastPRNumber,
+			LastPRDate:    progress.lastPRDate,
 			LastFetchTime: time.Now().UTC(),
-			TotalFetched:  allPRsProcessed,
+			TotalFetched:  progress.allPRsProcessed,
 		}
 
 		if err := state.SaveState(fetchState, stateFile); err != nil {
@@ -507,7 +556,7 @@ func fetchAllPullRequestsWithOptions(ctx context.Context, client github.Client, 
 			Since:        opts.Since,
 			Until:        opts.Until,
 			FetchAll:     true,
-			BatchSize:    pageSize,
+			BatchSize:    progress.pageSize,
 		}
 
 		fetchMetadata := tracker.GenerateMetadata(version.Version, params, false, nil)
@@ -683,7 +732,36 @@ func fetchIncremental(ctx context.Context, client github.Client, owner, repo str
 		return err
 	}
 
-	// Use the last PR date as the starting point
+	// Prepare incremental fetch context
+	fetchCtx, err := prepareIncrementalFetch(prevState, repoPath, sinceTime, untilTime)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "Resuming from PR #%d (created %s)\n", prevState.LastPRNumber, prevState.LastPRDate.Format("2006-01-02"))
+
+	// Perform the incremental fetch
+	newPRCount, err := performIncrementalFetch(ctx, client, owner, repo, writer, prevState, fetchCtx, fetchAll)
+	if err != nil {
+		return err
+	}
+
+	// Save state and metadata
+	return saveIncrementalResults(fetchCtx.currentState, stateFile, newPRCount, fetchCtx.tracker, metadataFile, owner, repo, fetchCtx.opts, fetchAll, fetchCtx.pageSize, fetchCtx.previousFetch)
+}
+
+// incrementalFetchContext holds the context needed for an incremental fetch.
+type incrementalFetchContext struct {
+	currentState  *state.FetchState
+	tracker       *metadata.Tracker
+	previousFetch *metadata.FetchRef
+	opts          github.FetchOptions
+	pageSize      int
+}
+
+// prepareIncrementalFetch sets up the context for an incremental fetch operation.
+func prepareIncrementalFetch(prevState *state.FetchState, repoPath string, sinceTime, untilTime *time.Time) (*incrementalFetchContext, error) {
+	// Use the last PR date as the starting point if not specified
 	if sinceTime == nil {
 		sinceTime = &prevState.LastPRDate
 	}
@@ -694,10 +772,8 @@ func fetchIncremental(ctx context.Context, client github.Client, owner, repo str
 		Until: untilTime,
 	}
 
-	fmt.Fprintf(os.Stderr, "Resuming from PR #%d (created %s)\n", prevState.LastPRNumber, prevState.LastPRDate.Format("2006-01-02"))
-
 	// Prepare metadata tracking
-	stateDir := filepath.Dir(stateFile)
+	stateDir := filepath.Dir(state.GetStateFilePath(repoPath))
 	tracker, previousFetch := prepareIncrementalMetadata(stateDir, repoPath)
 
 	// Track state for this fetch
@@ -710,11 +786,20 @@ func fetchIncremental(ctx context.Context, client github.Client, owner, repo str
 		TotalFetched:  0,
 	}
 
-	// Fetch and deduplicate
+	return &incrementalFetchContext{
+		currentState:  currentState,
+		tracker:       tracker,
+		previousFetch: previousFetch,
+		opts:          opts,
+		pageSize:      50,
+	}, nil
+}
+
+// performIncrementalFetch executes the main fetch loop for incremental updates.
+func performIncrementalFetch(ctx context.Context, client github.Client, owner, repo string, writer output.OutputWriter, prevState *state.FetchState, fetchCtx *incrementalFetchContext, fetchAll bool) (int, error) {
 	var (
 		hasMore    = true
 		cursor     = ""
-		pageSize   = 50
 		pageNum    = 0
 		newPRCount = 0
 	)
@@ -722,26 +807,26 @@ func fetchIncremental(ctx context.Context, client github.Client, owner, repo str
 	for hasMore {
 		pageNum++
 		pageOpts := github.FetchOptions{
-			PageSize: pageSize,
+			PageSize: fetchCtx.pageSize,
 			After:    cursor,
-			Since:    opts.Since,
-			Until:    opts.Until,
+			Since:    fetchCtx.opts.Since,
+			Until:    fetchCtx.opts.Until,
 		}
 
 		// Fetch page
-		page, err := fetchWithComplexityRetry(ctx, client, owner, repo, pageOpts, &pageSize)
+		page, err := fetchWithComplexityRetry(ctx, client, owner, repo, pageOpts, &fetchCtx.pageSize)
 		if err != nil {
-			return err
+			return 0, err
 		}
 
 		// Track API call
-		tracker.IncrementAPICall()
+		fetchCtx.tracker.IncrementAPICall()
 
 		// Process PRs with deduplication
 		for _, pr := range page.PullRequests {
-			isNew, err := processIncrementalPR(&pr, prevState, currentState, writer, tracker)
+			isNew, err := processIncrementalPR(&pr, prevState, fetchCtx.currentState, writer, fetchCtx.tracker)
 			if err != nil {
-				return err
+				return 0, err
 			}
 			if isNew {
 				newPRCount++
@@ -752,13 +837,8 @@ func fetchIncremental(ctx context.Context, client github.Client, owner, repo str
 		hasMore = page.HasNextPage && (fetchAll || newPRCount == 0)
 	}
 
-	// Save state and metadata
-	if err := saveIncrementalResults(currentState, stateFile, newPRCount, tracker, metadataFile, owner, repo, opts, fetchAll, pageSize, previousFetch); err != nil {
-		return err
-	}
-
 	fmt.Fprintf(os.Stderr, "Successfully fetched %d new pull requests\n", newPRCount)
-	return nil
+	return newPRCount, nil
 }
 
 // updateProgress displays a real-time progress indicator with percentage completion and ETA.

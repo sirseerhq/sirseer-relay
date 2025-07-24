@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/shurcooL/graphql"
@@ -223,27 +224,57 @@ func (c *GraphQLClient) mapError(err error, owner, repo string) error {
 }
 
 func isAuthError(errStr string) bool {
-	return contains(errStr, "401") || contains(errStr, "403") ||
-		contains(errStr, "unauthorized") || contains(errStr, "forbidden")
+	errLower := strings.ToLower(errStr)
+	return strings.Contains(errLower, "401") || strings.Contains(errLower, "403") ||
+		strings.Contains(errLower, "unauthorized") || strings.Contains(errLower, "forbidden")
 }
 
 func isNotFoundError(errStr string) bool {
-	return contains(errStr, "404") || contains(errStr, "not found") ||
-		contains(errStr, "Could not resolve to a Repository")
+	errLower := strings.ToLower(errStr)
+	return strings.Contains(errLower, "404") || strings.Contains(errLower, "not found") ||
+		strings.Contains(errLower, "could not resolve to a repository")
 }
 
 func isRateLimitError(errStr string) bool {
-	return contains(errStr, "rate limit") || contains(errStr, "429")
+	errLower := strings.ToLower(errStr)
+	return strings.Contains(errLower, "rate limit") || strings.Contains(errLower, "429")
 }
 
 func isComplexityError(errStr string) bool {
-	return contains(errStr, "complexity") || contains(errStr, "Query has complexity") ||
-		contains(errStr, "exceeds maximum")
+	errLower := strings.ToLower(errStr)
+	return strings.Contains(errLower, "complexity") || strings.Contains(errLower, "query has complexity") ||
+		strings.Contains(errLower, "exceeds maximum")
 }
 
 func isNetworkError(errStr string) bool {
-	return contains(errStr, "connection refused") || contains(errStr, "no such host") ||
-		contains(errStr, "timeout")
+	errLower := strings.ToLower(errStr)
+	return strings.Contains(errLower, "connection refused") || strings.Contains(errLower, "no such host") ||
+		strings.Contains(errLower, "timeout")
+}
+
+// limitedReader wraps a ReadCloser with a size limit to prevent excessive memory usage.
+type limitedReader struct {
+	io.ReadCloser
+	limit int64
+	read  int64
+}
+
+// Read implements io.Reader with size limit enforcement.
+func (lr *limitedReader) Read(p []byte) (n int, err error) {
+	if lr.read >= lr.limit {
+		return 0, fmt.Errorf("response size exceeded limit of %d bytes", lr.limit)
+	}
+
+	// Calculate how much we can read
+	remaining := lr.limit - lr.read
+	if int64(len(p)) > remaining {
+		p = p[:remaining]
+	}
+
+	n, err = lr.ReadCloser.Read(p)
+	lr.read += int64(n)
+
+	return n, err
 }
 
 // authTransport adds authentication header and safety limits to HTTP requests
@@ -280,65 +311,3 @@ func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, nil
 }
 
-// limitedReader wraps a ReadCloser with a size limit
-type limitedReader struct {
-	io.ReadCloser
-	limit int64
-	read  int64
-}
-
-// Read implements io.Reader with size limit
-func (lr *limitedReader) Read(p []byte) (n int, err error) {
-	if lr.read >= lr.limit {
-		return 0, fmt.Errorf("response size exceeded limit of %d bytes", lr.limit)
-	}
-
-	// Calculate how much we can read
-	remaining := lr.limit - lr.read
-	if int64(len(p)) > remaining {
-		p = p[:remaining]
-	}
-
-	n, err = lr.ReadCloser.Read(p)
-	lr.read += int64(n)
-
-	return n, err
-}
-
-// contains checks if a string contains a substring (case-insensitive)
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && containsNoCase(s, substr)
-}
-
-// containsNoCase performs case-insensitive string search
-func containsNoCase(s, substr string) bool {
-	if substr == "" {
-		return true
-	}
-	if len(s) < len(substr) {
-		return false
-	}
-
-	// Simple case-insensitive contains
-	for i := 0; i <= len(s)-len(substr); i++ {
-		match := true
-		for j := 0; j < len(substr); j++ {
-			if toLower(s[i+j]) != toLower(substr[j]) {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
-	}
-	return false
-}
-
-// toLower converts a single character to lowercase
-func toLower(c byte) byte {
-	if c >= 'A' && c <= 'Z' {
-		return c + 32
-	}
-	return c
-}
