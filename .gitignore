@@ -57,6 +57,11 @@ test-output/
 # State files
 *.state
 
+# Environment files (for GitHub tokens)
+.env
+.env.*
+.envrc
+
 # Temporary files
 tmp/
 temp/

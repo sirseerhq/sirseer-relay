@@ -42,6 +42,39 @@ make build
 
 Download the latest release for your platform from the [Releases](https://github.com/sirseerhq/sirseer-relay/releases) page.
 
+## Authentication
+
+### Creating a GitHub Token
+
+You can create a new Personal Access Token with the required permissions at:
+[**github.com/settings/tokens**](https://github.com/settings/tokens)
+
+For public repositories, you only need the `public_repo` scope.
+
+### Token Management Best Practices
+
+For development and testing:
+
+1. **Environment File (Not Auto-loaded)**
+   ```bash
+   # Create a .env file (gitignored)
+   echo 'GITHUB_TOKEN=ghp_your_token_here' > .env
+   # Load manually when needed
+   source .env && sirseer-relay fetch owner/repo
+   ```
+
+2. **Shell Profile (Persistent)**
+   ```bash
+   # Add to ~/.bashrc or ~/.zshrc
+   export GITHUB_TOKEN=ghp_your_token_here
+   ```
+
+3. **Secure Token Storage**
+   - Never commit tokens to version control
+   - Use minimal token permissions (public_repo for public repos)
+   - Rotate tokens regularly
+   - Consider using GitHub App tokens for production
+
 ## Common Usage Patterns
 
 ### Fetch All PRs
