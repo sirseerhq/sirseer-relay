@@ -29,10 +29,6 @@ linters-settings:
     # Check for errors in assignments
     check-blank: true
 
-  govet:
-    # Check for shadowed variables
-    check-shadowing: true
-
   gocyclo:
     # Max cyclomatic complexity
     min-complexity: 15
@@ -66,6 +62,15 @@ linters-settings:
       - commentedOutCode
 
 issues:
+  # Directories to exclude
+  exclude-dirs:
+    - vendor
+    - test/testdata
+
+  # Files to exclude
+  exclude-files:
+    - ".*\\.pb\\.go$"
+
   # Exclude some linters from running on test files
   exclude-rules:
     - path: _test\.go
@@ -90,6 +95,9 @@ issues:
   # Fix found issues (if it's supported by the linter)
   fix: false
 
+  # Make issues output unique by line
+  uniq-by-line: true
+
 run:
   # Timeout for analysis
   timeout: 5m
@@ -100,27 +108,16 @@ run:
   # Include test files
   tests: true
 
-  # Skip vendor, third party, etc.
-  skip-dirs:
-    - vendor
-    - test/testdata
-
-  # Skip files
-  skip-files:
-    - ".*\\.pb\\.go$"
-
 output:
   # Format: colored-line-number|line-number|json|tab|checkstyle|code-climate
-  format: colored-line-number
+  formats:
+    - format: colored-line-number
 
   # Print lines of code with issue
   print-issued-lines: true
 
   # Print linter name in the end of issue text
   print-linter-name: true
-
-  # Make issues output unique by line
-  uniq-by-line: true
 
   # Sort results by: filepath, line and column
   sort-results: true
