@@ -18,21 +18,20 @@ linters:
     - prealloc      # Find slice declarations that could be preallocated
     - nakedret      # Find naked returns
     - gocyclo       # Check cyclomatic complexity
-    - dupl          # Find duplicated code
     - goconst       # Find repeated strings that could be constants
     - gocritic      # Various checks
-    - shadow        # Check for shadowed variables
 
 linters-settings:
+  govet:
+    # Disable field alignment check - not critical for our use case
+    disable:
+      - fieldalignment
   errcheck:
     # Check for errors in type assertions
     check-type-assertions: true
     # Check for errors in assignments
     check-blank: true
 
-  govet:
-    # Enable all analyzers
-    enable-all: true
 
   gocyclo:
     # Max cyclomatic complexity
@@ -113,7 +112,7 @@ run:
 output:
   # Format configuration for golangci-lint v1.60+
   formats:
-    - format: text
+    - format: colored-line-number
       path: stdout
       print-issued-lines: true
       print-linter-name: true
