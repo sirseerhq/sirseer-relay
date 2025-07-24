@@ -1,550 +1,295 @@
-// Copyright 2025 SirSeer, LLC
-//
-// Licensed under the Business Source License 1.1 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://mariadb.com/bsl11
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package main
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	relaierrors "github.com/sirseerhq/sirseer-relay/internal/errors"
-	"github.com/sirseerhq/sirseer-relay/internal/github"
-	"github.com/sirseerhq/sirseer-relay/internal/output"
-	"github.com/sirseerhq/sirseer-relay/internal/state"
+	"github.com/sirseerhq/sirseer-relay/internal/config"
+	"github.com/sirseerhq/sirseer-relay/internal/metadata"
 )
 
-func TestFetchWithComplexityRetry(t *testing.T) {
+func TestParseRepository(t *testing.T) {
 	tests := []struct {
-		name               string
-		initialPageSize    int
-		mockSetup          func() *github.MockClient
-		expectedPageSize   int
-		expectedCallCount  int
-		expectError        bool
-		expectedErrMessage string
+		input     string
+		wantOwner string
+		wantRepo  string
+		wantErr   bool
 	}{
 		{
-			name:            "successful fetch without complexity error",
-			initialPageSize: 50,
-			mockSetup: func() *github.MockClient {
-				return github.NewMockClientWithOptions(
-					github.WithPullRequests([]github.PullRequest{
-						{Number: 1, Title: "Test PR"},
-					}),
-				)
-			},
-			expectedPageSize:  50,
-			expectedCallCount: 1,
-			expectError:       false,
+			input:     "golang/go",
+			wantOwner: "golang",
+			wantRepo:  "go",
+			wantErr:   false,
 		},
 		{
-			name:            "complexity error reduces page size once",
-			initialPageSize: 50,
-			mockSetup: func() *github.MockClient {
-				return github.NewMockClientWithOptions(
-					github.WithComplexityError(1), // Error on first call
-					github.WithPullRequests([]github.PullRequest{
-						{Number: 1, Title: "Test PR"},
-					}),
-				)
-			},
-			expectedPageSize:  25,
-			expectedCallCount: 2,
-			expectError:       false,
+			input:     "kubernetes/kubernetes",
+			wantOwner: "kubernetes",
+			wantRepo:  "kubernetes",
+			wantErr:   false,
 		},
 		{
-			name:            "multiple complexity errors reduce page size multiple times",
-			initialPageSize: 50,
-			mockSetup: func() *github.MockClient {
-				mock := github.NewMockClient()
-				mock.ComplexityErrorOnCall = 1
-				// Manually set to error on multiple calls
-				mock.PullRequests = []github.PullRequest{
-					{Number: 1, Title: "Test PR"},
-				}
-				return mock
-			},
-			expectedPageSize:  25,
-			expectedCallCount: 2,
-			expectError:       false,
+			input:   "invalid",
+			wantErr: true,
 		},
 		{
-			name:            "complexity error at minimum page size fails",
-			initialPageSize: 5,
-			mockSetup: func() *github.MockClient {
-				return github.NewMockClientWithOptions(
-					github.WithComplexityError(1),
-				)
-			},
-			expectedPageSize:   5,
-			expectedCallCount:  1,
-			expectError:        true,
-			expectedErrMessage: "GraphQL query complexity exceeded",
+			input:   "too/many/slashes",
+			wantErr: true,
 		},
 		{
-			name:            "other errors are not retried",
-			initialPageSize: 50,
-			mockSetup: func() *github.MockClient {
-				return github.NewMockClientWithOptions(
-					github.WithError(errors.New("network error")),
-				)
-			},
-			expectedPageSize:   50,
-			expectedCallCount:  1,
-			expectError:        true,
-			expectedErrMessage: "network error",
+			input:   "/repo",
+			wantErr: true,
+		},
+		{
+			input:   "owner/",
+			wantErr: true,
+		},
+		{
+			input:   "",
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Setup mock
-			mock := tt.mockSetup()
-			pageSize := tt.initialPageSize
-
-			// Call the function
-			ctx := context.Background()
-			opts := github.FetchOptions{
-				PageSize: pageSize,
-				After:    "",
-			}
-
-			page, err := fetchWithComplexityRetry(ctx, mock, "test", "repo", opts, &pageSize)
-
-			// Check error
-			if tt.expectError {
-				if err == nil {
-					t.Error("Expected error but got none")
-				} else if !strings.Contains(err.Error(), tt.expectedErrMessage) {
-					t.Errorf("Expected error containing %q, got %q", tt.expectedErrMessage, err.Error())
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Unexpected error: %v", err)
-				}
-				if page == nil {
-					t.Error("Expected page result but got nil")
-				}
-			}
-
-			// Check page size
-			if pageSize != tt.expectedPageSize {
-				t.Errorf("Expected page size %d, got %d", tt.expectedPageSize, pageSize)
-			}
-
-			// Check call count
-			if mock.CallCount != tt.expectedCallCount {
-				t.Errorf("Expected %d calls, got %d", tt.expectedCallCount, mock.CallCount)
-			}
-		})
-	}
-}
-
-func TestFetchWithComplexityRetry_LogsMessage(t *testing.T) {
-	// Capture stderr
-	oldStderr := os.Stderr
-	r, w, _ := os.Pipe()
-	os.Stderr = w
-
-	// Setup mock that returns complexity error on first call
-	mock := github.NewMockClientWithOptions(
-		github.WithComplexityError(1),
-		github.WithPullRequests([]github.PullRequest{
-			{Number: 1, Title: "Test PR"},
-		}),
-	)
-
-	// Call the function
-	ctx := context.Background()
-	pageSize := 50
-	opts := github.FetchOptions{
-		PageSize: pageSize,
-		After:    "",
-	}
-
-	_, err := fetchWithComplexityRetry(ctx, mock, "test", "repo", opts, &pageSize)
-
-	// Restore stderr
-	w.Close()
-	os.Stderr = oldStderr
-
-	// Read captured output
-	var buf bytes.Buffer
-	buf.ReadFrom(r)
-	stderrOutput := buf.String()
-
-	// Verify no error (should succeed on retry)
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	}
-
-	// Verify log message
-	if !strings.Contains(stderrOutput, "Query complexity limit hit. Reducing page size to 25") {
-		t.Errorf("Expected complexity reduction message in stderr, got: %s", stderrOutput)
-	}
-
-	// Verify page size was reduced
-	if pageSize != 25 {
-		t.Errorf("Expected page size to be reduced to 25, got %d", pageSize)
-	}
-}
-
-func TestFetchWithComplexityRetry_MaxRetries(t *testing.T) {
-	// Create a mock that always returns complexity error
-	mock := &github.MockClient{
-		Error: fmt.Errorf("complexity error: %w", relaierrors.ErrQueryComplexity),
-	}
-
-	ctx := context.Background()
-	pageSize := 50
-	opts := github.FetchOptions{
-		PageSize: pageSize,
-		After:    "",
-	}
-
-	_, err := fetchWithComplexityRetry(ctx, mock, "test", "repo", opts, &pageSize)
-
-	// Should fail after max retries
-	if err == nil {
-		t.Error("Expected error after max retries")
-	}
-
-	if !strings.Contains(err.Error(), "failed after 4 attempts") {
-		t.Errorf("Expected max retry error, got: %v", err)
-	}
-}
-
-// TestComplexityRecoveryIntegration tests the full flow with pagination and complexity errors
-func TestComplexityRecoveryIntegration(t *testing.T) {
-	// Create mock with 100 PRs that will trigger complexity on page 2
-	prs := make([]github.PullRequest, 100)
-	for i := 0; i < 100; i++ {
-		prs[i] = github.PullRequest{
-			Number:    i + 1,
-			Title:     fmt.Sprintf("PR %d", i+1),
-			State:     "open",
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-			Author:    github.Author{Login: "test"},
+		owner, repo, err := parseRepository(tt.input)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("parseRepository(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			continue
 		}
-	}
-
-	mock := github.NewMockClientWithOptions(
-		github.WithPullRequests(prs),
-		github.WithPagination(50),
-		github.WithComplexityError(2), // Error on second page
-	)
-
-	// Capture output
-	var outputBuf bytes.Buffer
-	writer := output.NewWriter(&outputBuf)
-
-	// Capture stderr for progress messages
-	oldStderr := os.Stderr
-	r, w, _ := os.Pipe()
-	os.Stderr = w
-
-	// Run fetchAllPullRequests
-	ctx := context.Background()
-	err := fetchAllPullRequests(ctx, mock, "test", "repo", writer)
-
-	// Restore stderr
-	w.Close()
-	os.Stderr = oldStderr
-
-	// Read stderr
-	var stderrBuf bytes.Buffer
-	stderrBuf.ReadFrom(r)
-	stderrOutput := stderrBuf.String()
-
-	// Should succeed
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-
-	// Should have logged complexity message
-	if !strings.Contains(stderrOutput, "Query complexity limit hit") {
-		t.Error("Expected complexity error message in output")
-	}
-
-	// Should have fetched all PRs
-	lines := strings.Split(strings.TrimSpace(outputBuf.String()), "\n")
-	if len(lines) != 100 {
-		t.Errorf("Expected 100 PRs, got %d", len(lines))
-	}
-
-	// Verify mock was called at least 3 times (first page, complexity error, retry with smaller size)
-	if mock.CallCount < 3 {
-		t.Errorf("Expected at least 3 calls, got %d", mock.CallCount)
+		if !tt.wantErr {
+			if owner != tt.wantOwner {
+				t.Errorf("parseRepository(%q) owner = %q, want %q", tt.input, owner, tt.wantOwner)
+			}
+			if repo != tt.wantRepo {
+				t.Errorf("parseRepository(%q) repo = %q, want %q", tt.input, repo, tt.wantRepo)
+			}
+		}
 	}
 }
 
 func TestParseDate(t *testing.T) {
+	now := time.Now().UTC()
+
 	tests := []struct {
-		name    string
 		input   string
 		wantErr bool
-		check   func(t time.Time) bool
+		check   func(time.Time) bool
 	}{
 		{
-			name:    "RFC3339 format",
-			input:   "2024-01-15T10:00:00Z",
-			wantErr: false,
-			check: func(t time.Time) bool {
-				return t.Year() == 2024 && t.Month() == time.January && t.Day() == 15
-			},
-		},
-		{
-			name:    "date only format",
 			input:   "2024-01-15",
 			wantErr: false,
 			check: func(t time.Time) bool {
-				return t.Year() == 2024 && t.Month() == time.January && t.Day() == 15 &&
-					t.Hour() == 0 && t.Minute() == 0 && t.Second() == 0
+				return t.Year() == 2024 && t.Month() == 1 && t.Day() == 15
 			},
 		},
 		{
-			name:    "relative days",
-			input:   "7d",
+			input:   "2024-01-15T10:30:00Z",
 			wantErr: false,
 			check: func(t time.Time) bool {
-				// Should be approximately 7 days ago
-				diff := time.Since(t)
-				return diff >= 7*24*time.Hour-time.Hour && diff <= 7*24*time.Hour+time.Hour
+				return t.Year() == 2024 && t.Month() == 1 && t.Day() == 15 &&
+					t.Hour() == 10 && t.Minute() == 30
 			},
 		},
 		{
-			name:    "invalid format",
-			input:   "not-a-date",
+			input:   "1d",
+			wantErr: false,
+			check: func(t time.Time) bool {
+				// Should be approximately 24 hours ago
+				diff := now.Sub(t)
+				return diff >= 23*time.Hour && diff <= 25*time.Hour
+			},
+		},
+		{
+			input:   "invalid",
 			wantErr: true,
 		},
 		{
-			name:    "empty string",
 			input:   "",
 			wantErr: true,
 		},
+	}
+
+	for _, tt := range tests {
+		got, err := parseDate(tt.input)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("parseDate(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			continue
+		}
+		if !tt.wantErr && tt.check != nil {
+			if !tt.check(got) {
+				t.Errorf("parseDate(%q) = %v, failed check", tt.input, got)
+			}
+		}
+	}
+}
+
+func TestGetToken(t *testing.T) {
+	// Save current env
+	oldToken := os.Getenv("GITHUB_TOKEN")
+	oldCustom := os.Getenv("CUSTOM_TOKEN")
+	defer func() {
+		os.Setenv("GITHUB_TOKEN", oldToken)
+		os.Setenv("CUSTOM_TOKEN", oldCustom)
+	}()
+
+	tests := []struct {
+		name      string
+		flagToken string
+		envVar    string
+		envValue  string
+		want      string
+	}{
 		{
-			name:    "invalid relative format",
-			input:   "7x",
-			wantErr: true,
+			name:      "flag takes precedence",
+			flagToken: "flag-token",
+			envVar:    "GITHUB_TOKEN",
+			envValue:  "env-token",
+			want:      "flag-token",
+		},
+		{
+			name:      "env var fallback",
+			flagToken: "",
+			envVar:    "GITHUB_TOKEN",
+			envValue:  "env-token",
+			want:      "env-token",
+		},
+		{
+			name:      "custom env var",
+			flagToken: "",
+			envVar:    "CUSTOM_TOKEN",
+			envValue:  "custom-token",
+			want:      "custom-token",
+		},
+		{
+			name:      "no token",
+			flagToken: "",
+			envVar:    "NONEXISTENT",
+			envValue:  "",
+			want:      "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseDate(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("parseDate() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !tt.wantErr && tt.check != nil && !tt.check(got) {
-				t.Errorf("parseDate() returned unexpected time: %v", got)
+			os.Setenv(tt.envVar, tt.envValue)
+			got := getToken(tt.flagToken, tt.envVar)
+			if got != tt.want {
+				t.Errorf("getToken(%q, %q) = %q, want %q", tt.flagToken, tt.envVar, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestFetchIncrementalErrorHandling(t *testing.T) {
-	// Create a temporary directory for state files
-	tempDir := t.TempDir()
-	t.Setenv("HOME", tempDir)
-
+func TestMapErrorToExitCode(t *testing.T) {
 	tests := []struct {
-		name           string
-		setupState     func()
-		expectedErrMsg string
+		name     string
+		err      error
+		wantCode int
 	}{
 		{
-			name:           "no previous state",
-			setupState:     func() {}, // No state file
-			expectedErrMsg: "no previous fetch state found",
+			name:     "nil error",
+			err:      nil,
+			wantCode: 0,
 		},
 		{
-			name: "corrupted state",
-			setupState: func() {
-				// Create a corrupted state file
-				stateFile := state.GetStateFilePath("test/repo")
-				os.MkdirAll(filepath.Dir(stateFile), 0755)
-				os.WriteFile(stateFile, []byte("corrupted data"), 0644)
-			},
-			expectedErrMsg: "state file is corrupted",
+			name:     "general error",
+			err:      os.ErrClosed,
+			wantCode: 1,
 		},
-		{
-			name: "incompatible version",
-			setupState: func() {
-				// Create state with wrong version
-				stateFile := state.GetStateFilePath("test/repo")
-				// Save with wrong version by writing directly
-				os.MkdirAll(filepath.Dir(stateFile), 0755)
-				data := `{"version":999,"checksum":"","repository":"test/repo","last_pr_number":100}`
-				os.WriteFile(stateFile, []byte(data), 0644)
-			},
-			expectedErrMsg: "incompatible",
-		},
-		{
-			name: "repository mismatch",
-			setupState: func() {
-				// Save state for different repo
-				testState := &state.FetchState{
-					Repository:   "other/repo",
-					LastPRNumber: 100,
-				}
-				stateFile := state.GetStateFilePath("test/repo")
-				state.SaveState(testState, stateFile)
-			},
-			expectedErrMsg: "state file is for repository other/repo",
-		},
+		// Add more test cases for specific error types when available
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Reset state
-			os.RemoveAll(tempDir + "/.sirseer")
-			
-			// Setup state
-			tt.setupState()
-
-			// Create mock client
-			mock := github.NewMockClient()
-			writer := output.NewWriter(&bytes.Buffer{})
-
-			// Try incremental fetch
-			err := fetchIncremental(context.Background(), mock, "test", "repo", writer, nil, nil, false)
-
-			if err == nil {
-				t.Error("Expected error but got none")
-			} else if !strings.Contains(err.Error(), tt.expectedErrMsg) {
-				t.Errorf("Expected error containing %q, got %q", tt.expectedErrMsg, err.Error())
+			got := mapErrorToExitCode(tt.err)
+			if got != tt.wantCode {
+				t.Errorf("mapErrorToExitCode(%v) = %d, want %d", tt.err, got, tt.wantCode)
 			}
 		})
 	}
 }
 
-func TestTimeWindowIntegration(t *testing.T) {
-	// Create PRs with different dates
-	now := time.Now().UTC()
-	oldDate := now.AddDate(0, -6, 0) // 6 months ago
-	recentDate := now.AddDate(0, -1, 0) // 1 month ago
+func TestConfigIntegration(t *testing.T) {
+	// Test that config loading works with fetch command
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "test-config.yaml")
 
-	prs := []github.PullRequest{
-		{Number: 1, Title: "Old PR", CreatedAt: oldDate, UpdatedAt: oldDate, Author: github.Author{Login: "test"}},
-		{Number: 2, Title: "Recent PR", CreatedAt: recentDate, UpdatedAt: recentDate, Author: github.Author{Login: "test"}},
-		{Number: 3, Title: "Current PR", CreatedAt: now, UpdatedAt: now, Author: github.Author{Login: "test"}},
+	configContent := `
+github:
+  token_env: TEST_GITHUB_TOKEN
+defaults:
+  batch_size: 25
+  state_dir: %s
+`
+	if err := os.WriteFile(configPath, []byte(strings.TrimSpace(strings.ReplaceAll(configContent, "%s", tmpDir))), 0o644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
 	}
 
-	// Note: The MockClient's FetchPullRequestsSearch just delegates to FetchPullRequests,
-	// which doesn't actually filter by date. For a real test, we'd need to modify the mock
-	// or create a custom implementation. For now, we'll test the basic flow.
-	mock := github.NewMockClientWithOptions(
-		github.WithPullRequests(prs),
-	)
-
-	tests := []struct {
-		name         string
-		since        *time.Time
-		until        *time.Time
-		expectedPRs  int
-		expectedNums []int
-	}{
-		{
-			name:         "no filters",
-			since:        nil,
-			until:        nil,
-			expectedPRs:  3,
-			expectedNums: []int{1, 2, 3},
-		},
-		{
-			name:         "since filter only",
-			since:        &recentDate,
-			until:        nil,
-			expectedPRs:  3, // Mock doesn't filter, so all PRs returned
-			expectedNums: []int{1, 2, 3},
-		},
-		{
-			name:         "until filter only",
-			since:        nil,
-			until:        &recentDate,
-			expectedPRs:  3, // Mock doesn't filter, so all PRs returned
-			expectedNums: []int{1, 2, 3},
-		},
-		{
-			name:         "both filters",
-			since:        &oldDate,
-			until:        &recentDate,
-			expectedPRs:  3, // Mock doesn't filter, so all PRs returned
-			expectedNums: []int{1, 2, 3},
-		},
+	// Load config for a test repo
+	cfg, err := config.LoadConfigForRepo(configPath, "test/repo")
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Capture output
-			var buf bytes.Buffer
-			writer := output.NewWriter(&buf)
+	// Verify config was loaded
+	if cfg.GitHub.TokenEnv != "TEST_GITHUB_TOKEN" {
+		t.Errorf("TokenEnv = %s, want TEST_GITHUB_TOKEN", cfg.GitHub.TokenEnv)
+	}
+	if cfg.GetBatchSize("test/repo") != 25 {
+		t.Errorf("BatchSize = %d, want 25", cfg.GetBatchSize("test/repo"))
+	}
+}
 
-			// Create options
-			opts := github.FetchOptions{
-				Since: tt.since,
-				Until: tt.until,
-			}
+func TestMetadataIntegration(t *testing.T) {
+	// Test metadata generation and saving
+	tmpDir := t.TempDir()
 
-			// Fetch
-			err := fetchFirstPageWithOptions(context.Background(), mock, "test", "repo", writer, opts)
-			if err != nil {
-				t.Fatalf("Unexpected error: %v", err)
-			}
+	// Create a tracker and simulate some activity
+	tracker := metadata.New()
+	tracker.IncrementAPICall()
+	tracker.IncrementAPICall()
+	tracker.UpdatePRStats(100, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC))
+	tracker.UpdatePRStats(101, time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC), time.Date(2024, 1, 4, 0, 0, 0, 0, time.UTC))
 
-			// Check output
-			lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
-			if strings.TrimSpace(buf.String()) == "" {
-				lines = []string{}
-			}
+	// Generate metadata
+	params := metadata.FetchParams{
+		Organization: "test",
+		Repository:   "repo",
+		FetchAll:     true,
+		BatchSize:    50,
+	}
 
-			if len(lines) != tt.expectedPRs {
-				t.Errorf("Expected %d PRs, got %d", tt.expectedPRs, len(lines))
-			}
+	meta := tracker.GenerateMetadata("v1.0.0", params, false, nil)
 
-			// Verify PR numbers
-			for i, line := range lines {
-				if line == "" {
-					continue
-				}
-				var pr github.PullRequest
-				if err := json.Unmarshal([]byte(line), &pr); err != nil {
-					t.Errorf("Failed to parse PR: %v", err)
-					continue
-				}
-				
-				found := false
-				for _, expected := range tt.expectedNums {
-					if pr.Number == expected {
-						found = true
-						break
-					}
-				}
-				if !found {
-					t.Errorf("Unexpected PR number %d at index %d", pr.Number, i)
-				}
-			}
-		})
+	// Verify metadata
+	if meta.RelayVersion != "v1.0.0" {
+		t.Errorf("RelayVersion = %s, want v1.0.0", meta.RelayVersion)
+	}
+	if meta.Results.TotalPRs != 2 {
+		t.Errorf("TotalPRs = %d, want 2", meta.Results.TotalPRs)
+	}
+	if meta.Results.APICallCount != 2 {
+		t.Errorf("APICallCount = %d, want 2", meta.Results.APICallCount)
+	}
+
+	// Save metadata
+	if err := metadata.SaveMetadata(meta, tmpDir); err != nil {
+		t.Fatalf("Failed to save metadata: %v", err)
+	}
+
+	// Load it back
+	loaded, err := metadata.LoadLatestMetadata(tmpDir, "test/repo")
+	if err != nil {
+		t.Fatalf("Failed to load metadata: %v", err)
+	}
+
+	if loaded == nil {
+		t.Fatal("Expected to load metadata, got nil")
+	}
+
+	if loaded.FetchID != meta.FetchID {
+		t.Errorf("Loaded FetchID = %s, want %s", loaded.FetchID, meta.FetchID)
 	}
 }

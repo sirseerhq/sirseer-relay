@@ -23,6 +23,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sirseerhq/sirseer-relay/internal/config"
 	"github.com/sirseerhq/sirseer-relay/internal/github"
 )
 
@@ -149,8 +150,9 @@ func TestRunFetch_MockClient(t *testing.T) {
 				t.Skip("Stdout capture not implemented")
 			}
 
-			// Run the fetch
-			err := runFetch(context.Background(), tt.repoArg, tt.token, tt.outputFile, false, "", "", false)
+			// Run the fetch with default config
+			cfg := config.DefaultConfig()
+			err := runFetch(context.Background(), tt.repoArg, tt.token, tt.outputFile, "", false, 50, "", "", false, cfg)
 
 			// Check error
 			if (err != nil) != tt.wantErr {
