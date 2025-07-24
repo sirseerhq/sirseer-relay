@@ -110,17 +110,9 @@ run:
     - ".*\\.pb\\.go$"
 
 output:
-  # Format: colored-line-number|line-number|json|tab|checkstyle|code-climate
-  format: colored-line-number
-
-  # Print lines of code with issue
-  print-issued-lines: true
-
-  # Print linter name in the end of issue text
-  print-linter-name: true
-
-  # Make issues output unique by line
-  uniq-by-line: true
-
-  # Sort results by: filepath, line and column
-  sort-results: true
+  # Format configuration for golangci-lint v1.60+
+  formats:
+    - format: text
+      path: stdout
+      print-issued-lines: true
+      print-linter-name: true
