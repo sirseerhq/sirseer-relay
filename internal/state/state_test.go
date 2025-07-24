@@ -15,6 +15,7 @@
 package state
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -124,7 +125,7 @@ func TestLoadState_CorruptedJSON(t *testing.T) {
 	stateFile := filepath.Join(tempDir, "corrupted.state")
 
 	// Write invalid JSON
-	if err := os.WriteFile(stateFile, []byte("{ invalid json"), 0644); err != nil {
+	if err := os.WriteFile(stateFile, []byte("{ invalid json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -160,10 +161,10 @@ func TestLoadState_ChecksumMismatch(t *testing.T) {
 
 	// Tamper with the content by changing a field
 	tamperedData := strings.Replace(string(data), `"last_pr_number": 100`, `"last_pr_number": 200`, 1)
-	
+
 	// Write back the tampered data
-	if err := os.WriteFile(stateFile, []byte(tamperedData), 0644); err != nil {
-		t.Fatal(err)
+	if writeErr := os.WriteFile(stateFile, []byte(tamperedData), 0o644); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 
 	// Try to load the tampered state
@@ -193,13 +194,12 @@ func TestLoadState_VersionMismatch(t *testing.T) {
 
 	// Calculate checksum for old state
 	oldState["checksum"] = ""
-	data, _ := json.Marshal(oldState)
 	checksum, _ := calculateChecksum(&FetchState{Version: 0})
 	oldState["checksum"] = checksum
 
 	// Write the old version state
-	data, _ = json.MarshalIndent(oldState, "", "  ")
-	if err := os.WriteFile(stateFile, data, 0644); err != nil {
+	data, _ := json.MarshalIndent(oldState, "", "  ")
+	if err := os.WriteFile(stateFile, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -234,8 +234,8 @@ func TestAtomicWrite(t *testing.T) {
 
 	// Simulate a partial write by creating temp file
 	tempFile := stateFile + ".tmp"
-	if err := os.WriteFile(tempFile, []byte("partial write"), 0644); err != nil {
-		t.Fatal(err)
+	if writeErr := os.WriteFile(tempFile, []byte("partial write"), 0o644); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 
 	// Verify original file is still intact
@@ -243,7 +243,7 @@ func TestAtomicWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(currentData) != string(initialData) {
+	if !bytes.Equal(currentData, initialData) {
 		t.Error("Original state file was modified during partial write")
 	}
 

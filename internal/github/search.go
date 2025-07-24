@@ -39,15 +39,16 @@ func buildSearchQuery(owner, repo string, opts FetchOptions) string {
 	}
 
 	// Add date filters if provided
-	if opts.Since != nil && opts.Until != nil {
+	switch {
+	case opts.Since != nil && opts.Until != nil:
 		// Range query: created:YYYY-MM-DD..YYYY-MM-DD
 		parts = append(parts, fmt.Sprintf("created:%s..%s",
 			opts.Since.Format("2006-01-02"),
 			opts.Until.Format("2006-01-02")))
-	} else if opts.Since != nil {
+	case opts.Since != nil:
 		// After query: created:>YYYY-MM-DD
 		parts = append(parts, fmt.Sprintf("created:>%s", opts.Since.Format("2006-01-02")))
-	} else if opts.Until != nil {
+	case opts.Until != nil:
 		// Before query: created:<YYYY-MM-DD
 		parts = append(parts, fmt.Sprintf("created:<%s", opts.Until.Format("2006-01-02")))
 	}
@@ -99,7 +100,7 @@ func (c *GraphQLClient) FetchPullRequestsSearch(ctx context.Context, owner, repo
 	variables := map[string]interface{}{
 		"query": graphql.String(searchQuery),
 		"first": graphql.Int(int32(pageSize)), // #nosec G115 - pageSize is capped at 100
-		"type":  "ISSUE", // PRs are of type ISSUE in search
+		"type":  "ISSUE",                      // PRs are of type ISSUE in search
 	}
 
 	// Add after cursor if provided

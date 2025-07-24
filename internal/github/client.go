@@ -22,7 +22,7 @@ type Client interface {
 	// FetchPullRequests retrieves a page of pull requests from the specified repository.
 	// It supports cursor-based pagination through the opts.After parameter to fetch
 	// subsequent pages. The page size can be configured via opts.PageSize.
-	// DEPRECATED: Use FetchPullRequestsSearch for date filtering and chronological ordering.
+	// Deprecated: Use FetchPullRequestsSearch for date filtering and chronological ordering.
 	FetchPullRequests(ctx context.Context, owner, repo string, opts FetchOptions) (*PullRequestPage, error)
 
 	// FetchPullRequestsSearch retrieves pull requests using GitHub's search API.

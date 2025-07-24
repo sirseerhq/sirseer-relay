@@ -36,7 +36,7 @@ func GetStateFilePath(repository string) string {
 
 	// Replace slashes with dashes for filesystem compatibility
 	safeRepoName := strings.ReplaceAll(repository, "/", "-")
-	
+
 	return filepath.Join(homeDir, ".sirseer", "state", safeRepoName+".state")
 }
 
@@ -56,8 +56,8 @@ func SaveState(state *FetchState, stateFile string) error {
 
 	// Ensure the directory exists
 	stateDir := filepath.Dir(stateFile)
-	if err := os.MkdirAll(stateDir, 0755); err != nil {
-		return fmt.Errorf("failed to create state directory: %w", err)
+	if mkdirErr := os.MkdirAll(stateDir, 0o755); mkdirErr != nil {
+		return fmt.Errorf("failed to create state directory: %w", mkdirErr)
 	}
 
 	// Create a temporary file in the same directory
@@ -69,9 +69,9 @@ func SaveState(state *FetchState, stateFile string) error {
 		return fmt.Errorf("failed to marshal state: %w", err)
 	}
 
-	// Write to temporary file
-	if err := os.WriteFile(tempFile, data, 0644); err != nil {
-		return fmt.Errorf("failed to write temporary state file: %w", err)
+	// Write to temporary file with restricted permissions
+	if writeErr := os.WriteFile(tempFile, data, 0o600); writeErr != nil {
+		return fmt.Errorf("failed to write temporary state file: %w", writeErr)
 	}
 
 	// Sync to ensure data is flushed to disk
@@ -112,20 +112,20 @@ func LoadState(stateFile string) (*FetchState, error) {
 
 	// Unmarshal the state
 	var state FetchState
-	if err := json.Unmarshal(data, &state); err != nil {
-		return nil, fmt.Errorf("state file is corrupted (invalid JSON): %w", err)
+	if unmarshalErr := json.Unmarshal(data, &state); unmarshalErr != nil {
+		return nil, fmt.Errorf("state file is corrupted (invalid JSON): %w", unmarshalErr)
 	}
 
 	// Check version compatibility
 	if state.Version != CurrentVersion {
-		return nil, fmt.Errorf("state file version (%d) is incompatible with current version (%d)", 
+		return nil, fmt.Errorf("state file version (%d) is incompatible with current version (%d)",
 			state.Version, CurrentVersion)
 	}
 
 	// Verify checksum
 	savedChecksum := state.Checksum
 	state.Checksum = "" // Clear for recalculation
-	
+
 	calculatedChecksum, err := calculateChecksum(&state)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate checksum for validation: %w", err)
