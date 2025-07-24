@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/shurcooL/graphql"
@@ -106,12 +107,17 @@ func (c *GraphQLClient) GetRepositoryInfo(ctx context.Context, owner, repo strin
 // the PRs and pagination information needed to fetch subsequent pages.
 func (c *GraphQLClient) FetchPullRequests(ctx context.Context, owner, repo string, opts FetchOptions) (*PullRequestPage, error) {
 	// Set default page size if not specified
+	// For complex queries, start with a smaller page size
 	pageSize := opts.PageSize
 	if pageSize <= 0 {
-		pageSize = defaultPageSize
+		pageSize = complexityPageSize // Start small for complex queries
+	}
+	// For comprehensive queries, cap at a smaller size to avoid complexity issues
+	if pageSize > complexityPageSize {
+		pageSize = complexityPageSize
 	}
 
-	// Define the GraphQL query structure
+	// Define the comprehensive GraphQL query structure
 	var query struct {
 		Repository struct {
 			PullRequests struct {
@@ -120,28 +126,142 @@ func (c *GraphQLClient) FetchPullRequests(ctx context.Context, owner, repo strin
 					EndCursor   graphql.String
 				}
 				Nodes []struct {
-					Number    graphql.Int
-					Title     graphql.String
-					State     graphql.String
-					CreatedAt time.Time
-					UpdatedAt time.Time
-					ClosedAt  *time.Time
-					MergedAt  *time.Time
-					// Author is a nested object that adds to query complexity.
-					// When fetching large batches, the query complexity may exceed
-					// GitHub's limits. The fetchWithComplexityRetry function handles
-					// this by automatically reducing the batch size.
+					Number             graphql.Int
+					Title              graphql.String
+					State              graphql.String
+					Body               graphql.String
+					URL                graphql.String
+					CreatedAt          time.Time
+					UpdatedAt          time.Time
+					ClosedAt           *time.Time
+					MergedAt           *time.Time
+					Merged             graphql.Boolean
+					Mergeable          graphql.String
+					Additions          graphql.Int
+					Deletions          graphql.Int
+					ChangedFiles       graphql.Int
+					TotalCommentsCount graphql.Int
+
+					// Author information
 					Author struct {
-						Login graphql.String
+						Login graphql.String `graphql:"login"`
 					} `graphql:"author"`
+
+					// MergedBy information
+					MergedBy *struct {
+						Login graphql.String `graphql:"login"`
+					} `graphql:"mergedBy"`
+
+					// Base and head references
+					BaseRef *struct {
+						Name   graphql.String
+						Target struct {
+							OID graphql.String `graphql:"oid"`
+						}
+					} `graphql:"baseRef"`
+
+					HeadRef *struct {
+						Name   graphql.String
+						Target struct {
+							OID graphql.String `graphql:"oid"`
+						}
+					} `graphql:"headRef"`
+
+					// Merge commit SHA
+					MergeCommit *struct {
+						OID graphql.String `graphql:"oid"`
+					} `graphql:"mergeCommit"`
+
+					// Labels
+					Labels struct {
+						Nodes []struct {
+							Name        graphql.String
+							Color       graphql.String
+							Description graphql.String
+						}
+					} `graphql:"labels(first: 100)"`
+
+					// Assignees
+					Assignees struct {
+						Nodes []struct {
+							Login graphql.String
+						}
+					} `graphql:"assignees(first: 100)"`
+
+					// Requested reviewers
+					ReviewRequests struct {
+						Nodes []struct {
+							RequestedReviewer struct {
+								User struct {
+									Login graphql.String
+								} `graphql:"... on User"`
+							} `graphql:"requestedReviewer"`
+						}
+					} `graphql:"reviewRequests(first: 100)"`
+
+					// Files changed
+					Files struct {
+						TotalCount graphql.Int
+						Nodes      []struct {
+							Path       graphql.String
+							Additions  graphql.Int
+							Deletions  graphql.Int
+							ChangeType graphql.String
+						}
+					} `graphql:"files(first: 100)"`
+
+					// Reviews
+					Reviews struct {
+						Nodes []struct {
+							ID          graphql.String
+							State       graphql.String
+							Body        graphql.String
+							SubmittedAt *time.Time
+							Author      struct {
+								Login graphql.String
+							} `graphql:"author"`
+						}
+					} `graphql:"reviews(first: 50)"`
+
+					// Commits
+					Commits struct {
+						TotalCount graphql.Int
+						Nodes      []struct {
+							Commit struct {
+								OID           graphql.String `graphql:"oid"`
+								Message       graphql.String
+								AuthoredDate  time.Time
+								CommittedDate time.Time
+								Additions     graphql.Int
+								Deletions     graphql.Int
+								Author        struct {
+									User *struct {
+										Login graphql.String
+									} `graphql:"user"`
+									Name  graphql.String
+									Email graphql.String
+								} `graphql:"author"`
+								Committer struct {
+									User *struct {
+										Login graphql.String
+									} `graphql:"user"`
+									Name  graphql.String
+									Email graphql.String
+								} `graphql:"committer"`
+								Parents struct {
+									Nodes []struct {
+										OID graphql.String `graphql:"oid"`
+									}
+								} `graphql:"parents(first: 2)"`
+							} `graphql:"commit"`
+						}
+					} `graphql:"commits(first: 100)"`
 				}
 			} `graphql:"pullRequests(first: $first, after: $after, orderBy: {field: UPDATED_AT, direction: DESC})"`
 		} `graphql:"repository(owner: $owner, name: $repo)"`
 	}
 
 	// Set up variables
-	// pageSize is already capped at 100, so int32 conversion is safe
-	// graphql.Int is int32, so we need explicit conversion
 	variables := map[string]interface{}{
 		"owner": graphql.String(owner),
 		"repo":  graphql.String(repo),
@@ -167,25 +287,7 @@ func (c *GraphQLClient) FetchPullRequests(ctx context.Context, owner, repo strin
 	}
 
 	for _, node := range query.Repository.PullRequests.Nodes {
-		pr := PullRequest{
-			Number:    int(node.Number),
-			Title:     string(node.Title),
-			State:     string(node.State),
-			CreatedAt: node.CreatedAt,
-			UpdatedAt: node.UpdatedAt,
-			Author: Author{
-				Login: string(node.Author.Login),
-			},
-		}
-
-		// Handle optional timestamps
-		if node.ClosedAt != nil {
-			pr.ClosedAt = node.ClosedAt
-		}
-		if node.MergedAt != nil {
-			pr.MergedAt = node.MergedAt
-		}
-
+		pr := c.convertGraphQLPR(&node)
 		page.PullRequests = append(page.PullRequests, pr)
 	}
 
@@ -280,4 +382,314 @@ func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	return resp, nil
+}
+
+// convertGraphQLPR converts a GraphQL pull request node to our domain model
+func (c *GraphQLClient) convertGraphQLPR(node interface{}) PullRequest {
+	// Use reflection to access the node fields
+	// This is necessary because the node is an anonymous struct from the query
+	n := node.(*struct {
+		Number             graphql.Int
+		Title              graphql.String
+		State              graphql.String
+		Body               graphql.String
+		URL                graphql.String
+		CreatedAt          time.Time
+		UpdatedAt          time.Time
+		ClosedAt           *time.Time
+		MergedAt           *time.Time
+		Merged             graphql.Boolean
+		Mergeable          graphql.String
+		Additions          graphql.Int
+		Deletions          graphql.Int
+		ChangedFiles       graphql.Int
+		TotalCommentsCount graphql.Int
+
+		Author struct {
+			Login graphql.String `graphql:"login"`
+		} `graphql:"author"`
+
+		MergedBy *struct {
+			Login graphql.String `graphql:"login"`
+		} `graphql:"mergedBy"`
+
+		BaseRef *struct {
+			Name   graphql.String
+			Target struct {
+				OID graphql.String `graphql:"oid"`
+			}
+		} `graphql:"baseRef"`
+
+		HeadRef *struct {
+			Name   graphql.String
+			Target struct {
+				OID graphql.String `graphql:"oid"`
+			}
+		} `graphql:"headRef"`
+
+		MergeCommit *struct {
+			OID graphql.String `graphql:"oid"`
+		} `graphql:"mergeCommit"`
+
+		Labels struct {
+			Nodes []struct {
+				Name        graphql.String
+				Color       graphql.String
+				Description graphql.String
+			}
+		} `graphql:"labels(first: 100)"`
+
+		Assignees struct {
+			Nodes []struct {
+				Login graphql.String
+			}
+		} `graphql:"assignees(first: 100)"`
+
+		ReviewRequests struct {
+			Nodes []struct {
+				RequestedReviewer struct {
+					User struct {
+						Login graphql.String
+					} `graphql:"... on User"`
+				} `graphql:"requestedReviewer"`
+			}
+		} `graphql:"reviewRequests(first: 100)"`
+
+		Files struct {
+			TotalCount graphql.Int
+			Nodes      []struct {
+				Path       graphql.String
+				Additions  graphql.Int
+				Deletions  graphql.Int
+				ChangeType graphql.String
+			}
+		} `graphql:"files(first: 100)"`
+
+		Reviews struct {
+			Nodes []struct {
+				ID          graphql.String
+				State       graphql.String
+				Body        graphql.String
+				SubmittedAt *time.Time
+				Author      struct {
+					Login graphql.String
+				} `graphql:"author"`
+			}
+		} `graphql:"reviews(first: 50)"`
+
+		Commits struct {
+			TotalCount graphql.Int
+			Nodes      []struct {
+				Commit struct {
+					OID           graphql.String `graphql:"oid"`
+					Message       graphql.String
+					AuthoredDate  time.Time
+					CommittedDate time.Time
+					Additions     graphql.Int
+					Deletions     graphql.Int
+					Author        struct {
+						User *struct {
+							Login graphql.String
+						} `graphql:"user"`
+						Name  graphql.String
+						Email graphql.String
+					} `graphql:"author"`
+					Committer struct {
+						User *struct {
+							Login graphql.String
+						} `graphql:"user"`
+						Name  graphql.String
+						Email graphql.String
+					} `graphql:"committer"`
+					Parents struct {
+						Nodes []struct {
+							OID graphql.String `graphql:"oid"`
+						}
+					} `graphql:"parents(first: 2)"`
+				} `graphql:"commit"`
+			}
+		} `graphql:"commits(first: 100)"`
+	})
+
+	// Build the PR object
+	pr := PullRequest{
+		Number:         int(n.Number),
+		Title:          string(n.Title),
+		State:          string(n.State),
+		Body:           string(n.Body),
+		URL:            string(n.URL),
+		CreatedAt:      n.CreatedAt,
+		UpdatedAt:      n.UpdatedAt,
+		ClosedAt:       n.ClosedAt,
+		MergedAt:       n.MergedAt,
+		Merged:         bool(n.Merged),
+		Additions:      int(n.Additions),
+		Deletions:      int(n.Deletions),
+		ChangedFiles:   int(n.ChangedFiles),
+		Comments:       int(n.TotalCommentsCount),
+		ReviewComments: 0, // GitHub doesn't provide this in GraphQL
+		Commits:        int(n.Commits.TotalCount),
+	}
+
+	// Set author
+	pr.Author = User{
+		Login: string(n.Author.Login),
+		Type:  "User",
+	}
+
+	// Check if author is a bot
+	if strings.Contains(pr.Author.Login, "[bot]") || strings.HasSuffix(pr.Author.Login, "-bot") {
+		pr.Author.Type = "Bot"
+		pr.IsBot = true
+	}
+
+	// Set merged by
+	if n.MergedBy != nil {
+		pr.MergedBy = &User{
+			Login: string(n.MergedBy.Login),
+			Type:  "User",
+		}
+	}
+
+	// Set refs
+	if n.BaseRef != nil {
+		pr.BaseRef = string(n.BaseRef.Name)
+		pr.BaseSHA = string(n.BaseRef.Target.OID)
+	}
+	if n.HeadRef != nil {
+		pr.HeadRef = string(n.HeadRef.Name)
+		pr.HeadSHA = string(n.HeadRef.Target.OID)
+	}
+	if n.MergeCommit != nil {
+		pr.MergeCommitSHA = string(n.MergeCommit.OID)
+	}
+
+	// Set mergeable
+	if n.Mergeable != "" {
+		mergeable := n.Mergeable == "MERGEABLE"
+		pr.Mergeable = &mergeable
+	}
+
+	// Convert labels
+	pr.Labels = make([]Label, 0, len(n.Labels.Nodes))
+	for _, label := range n.Labels.Nodes {
+		pr.Labels = append(pr.Labels, Label{
+			Name:        string(label.Name),
+			Color:       string(label.Color),
+			Description: string(label.Description),
+		})
+	}
+
+	// Convert assignees
+	pr.Assignees = make([]User, 0, len(n.Assignees.Nodes))
+	for _, assignee := range n.Assignees.Nodes {
+		pr.Assignees = append(pr.Assignees, User{
+			Login: string(assignee.Login),
+			Type:  "User",
+		})
+	}
+
+	// Convert reviewers from review requests
+	pr.Reviewers = make([]User, 0, len(n.ReviewRequests.Nodes))
+	for _, req := range n.ReviewRequests.Nodes {
+		pr.Reviewers = append(pr.Reviewers, User{
+			Login: string(req.RequestedReviewer.User.Login),
+			Type:  "User",
+		})
+	}
+
+	// Convert files
+	pr.Files = make([]File, 0, len(n.Files.Nodes))
+	for _, file := range n.Files.Nodes {
+		// Map GitHub change types to our format
+		status := "modified"
+		switch string(file.ChangeType) {
+		case "ADDED":
+			status = "added"
+		case "DELETED":
+			status = "removed"
+		case "RENAMED":
+			status = "renamed"
+		}
+
+		pr.Files = append(pr.Files, File{
+			Filename:  string(file.Path),
+			Status:    status,
+			Additions: int(file.Additions),
+			Deletions: int(file.Deletions),
+			Changes:   int(file.Additions) + int(file.Deletions),
+		})
+	}
+
+	// Convert reviews
+	pr.Reviews = make([]Review, 0, len(n.Reviews.Nodes))
+	for _, review := range n.Reviews.Nodes {
+		pr.Reviews = append(pr.Reviews, Review{
+			ID:          string(review.ID),
+			State:       string(review.State),
+			Body:        string(review.Body),
+			SubmittedAt: review.SubmittedAt,
+			User: User{
+				Login: string(review.Author.Login),
+				Type:  "User",
+			},
+		})
+	}
+
+	// Convert commits
+	pr.CommitList = make([]Commit, 0, len(n.Commits.Nodes))
+	for _, commitNode := range n.Commits.Nodes {
+		commit := commitNode.Commit
+		c := Commit{
+			SHA:          string(commit.OID),
+			Message:      string(commit.Message),
+			AuthoredAt:   commit.AuthoredDate,
+			CommittedAt:  commit.CommittedDate,
+			Additions:    int(commit.Additions),
+			Deletions:    int(commit.Deletions),
+			TotalChanges: int(commit.Additions) + int(commit.Deletions),
+		}
+
+		// Set author
+		if commit.Author.User != nil {
+			c.Author = User{
+				Login: string(commit.Author.User.Login),
+				Type:  "User",
+			}
+		} else {
+			c.Author = User{
+				Login: string(commit.Author.Name),
+				Email: string(commit.Author.Email),
+				Type:  "User",
+			}
+		}
+
+		// Set committer
+		if commit.Committer.User != nil {
+			c.Committer = User{
+				Login: string(commit.Committer.User.Login),
+				Type:  "User",
+			}
+		} else {
+			c.Committer = User{
+				Login: string(commit.Committer.Name),
+				Email: string(commit.Committer.Email),
+				Type:  "User",
+			}
+		}
+
+		// Set parents
+		c.Parents = make([]string, 0, len(commit.Parents.Nodes))
+		for _, parent := range commit.Parents.Nodes {
+			c.Parents = append(c.Parents, string(parent.OID))
+		}
+
+		pr.CommitList = append(pr.CommitList, c)
+	}
+
+	// Note: Conversations would require a separate timeline query
+	// For now, we'll leave it empty
+	pr.Conversations = []Conversation{}
+
+	return pr
 }

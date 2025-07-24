@@ -64,15 +64,20 @@ func buildSearchQuery(owner, repo string, opts FetchOptions) string {
 // It's more flexible than the pullRequests API and enables server-side date filtering.
 func (c *GraphQLClient) FetchPullRequestsSearch(ctx context.Context, owner, repo string, opts FetchOptions) (*PullRequestPage, error) {
 	// Set default page size if not specified
+	// For complex queries, start with a smaller page size
 	pageSize := opts.PageSize
 	if pageSize <= 0 {
-		pageSize = defaultPageSize
+		pageSize = complexityPageSize // Start small for complex queries
+	}
+	// For comprehensive queries, cap at a smaller size to avoid complexity issues
+	if pageSize > complexityPageSize {
+		pageSize = complexityPageSize
 	}
 
 	// Build the search query
 	searchQuery := buildSearchQuery(owner, repo, opts)
 
-	// Define the GraphQL query structure for search
+	// Define the comprehensive GraphQL query structure for search
 	var query struct {
 		Search struct {
 			PageInfo struct {
@@ -81,16 +86,136 @@ func (c *GraphQLClient) FetchPullRequestsSearch(ctx context.Context, owner, repo
 			}
 			Nodes []struct {
 				PullRequest struct {
-					Number    graphql.Int
-					Title     graphql.String
-					State     graphql.String
-					CreatedAt time.Time
-					UpdatedAt time.Time
-					ClosedAt  *time.Time
-					MergedAt  *time.Time
-					Author    struct {
-						Login graphql.String
+					Number             graphql.Int
+					Title              graphql.String
+					State              graphql.String
+					Body               graphql.String
+					URL                graphql.String
+					CreatedAt          time.Time
+					UpdatedAt          time.Time
+					ClosedAt           *time.Time
+					MergedAt           *time.Time
+					Merged             graphql.Boolean
+					Mergeable          graphql.String
+					Additions          graphql.Int
+					Deletions          graphql.Int
+					ChangedFiles       graphql.Int
+					TotalCommentsCount graphql.Int
+
+					// Author information
+					Author struct {
+						Login graphql.String `graphql:"login"`
 					} `graphql:"author"`
+
+					// MergedBy information
+					MergedBy *struct {
+						Login graphql.String `graphql:"login"`
+					} `graphql:"mergedBy"`
+
+					// Base and head references
+					BaseRef *struct {
+						Name   graphql.String
+						Target struct {
+							OID graphql.String `graphql:"oid"`
+						}
+					} `graphql:"baseRef"`
+
+					HeadRef *struct {
+						Name   graphql.String
+						Target struct {
+							OID graphql.String `graphql:"oid"`
+						}
+					} `graphql:"headRef"`
+
+					// Merge commit SHA
+					MergeCommit *struct {
+						OID graphql.String `graphql:"oid"`
+					} `graphql:"mergeCommit"`
+
+					// Labels
+					Labels struct {
+						Nodes []struct {
+							Name        graphql.String
+							Color       graphql.String
+							Description graphql.String
+						}
+					} `graphql:"labels(first: 100)"`
+
+					// Assignees
+					Assignees struct {
+						Nodes []struct {
+							Login graphql.String
+						}
+					} `graphql:"assignees(first: 100)"`
+
+					// Requested reviewers
+					ReviewRequests struct {
+						Nodes []struct {
+							RequestedReviewer struct {
+								User struct {
+									Login graphql.String
+								} `graphql:"... on User"`
+							} `graphql:"requestedReviewer"`
+						}
+					} `graphql:"reviewRequests(first: 100)"`
+
+					// Files changed
+					Files struct {
+						TotalCount graphql.Int
+						Nodes      []struct {
+							Path       graphql.String
+							Additions  graphql.Int
+							Deletions  graphql.Int
+							ChangeType graphql.String
+						}
+					} `graphql:"files(first: 100)"`
+
+					// Reviews
+					Reviews struct {
+						Nodes []struct {
+							ID          graphql.String
+							State       graphql.String
+							Body        graphql.String
+							SubmittedAt *time.Time
+							Author      struct {
+								Login graphql.String
+							} `graphql:"author"`
+						}
+					} `graphql:"reviews(first: 50)"`
+
+					// Commits
+					Commits struct {
+						TotalCount graphql.Int
+						Nodes      []struct {
+							Commit struct {
+								OID           graphql.String `graphql:"oid"`
+								Message       graphql.String
+								AuthoredDate  time.Time
+								CommittedDate time.Time
+								Additions     graphql.Int
+								Deletions     graphql.Int
+								Author        struct {
+									User *struct {
+										Login graphql.String
+									} `graphql:"user"`
+									Name  graphql.String
+									Email graphql.String
+								} `graphql:"author"`
+								Committer struct {
+									User *struct {
+										Login graphql.String
+									} `graphql:"user"`
+									Name  graphql.String
+									Email graphql.String
+								} `graphql:"committer"`
+								Parents struct {
+									Nodes []struct {
+										OID graphql.String `graphql:"oid"`
+									}
+								} `graphql:"parents(first: 2)"`
+							} `graphql:"commit"`
+						}
+					} `graphql:"commits(first: 100)"`
 				} `graphql:"... on PullRequest"`
 			}
 		} `graphql:"search(query: $query, type: ISSUE, first: $first, after: $after)"`
@@ -100,12 +225,13 @@ func (c *GraphQLClient) FetchPullRequestsSearch(ctx context.Context, owner, repo
 	variables := map[string]interface{}{
 		"query": graphql.String(searchQuery),
 		"first": graphql.Int(int32(pageSize)), // #nosec G115 - pageSize is capped at 100
-		"type":  "ISSUE",                      // PRs are of type ISSUE in search
+		"after": (*graphql.String)(nil),       // Initialize as nil, will be set if provided
 	}
 
 	// Add after cursor if provided
 	if opts.After != "" {
-		variables["after"] = graphql.String(opts.After)
+		after := graphql.String(opts.After)
+		variables["after"] = &after
 	}
 
 	// Execute the query
@@ -121,26 +247,9 @@ func (c *GraphQLClient) FetchPullRequestsSearch(ctx context.Context, owner, repo
 		PullRequests: make([]PullRequest, 0, len(query.Search.Nodes)),
 	}
 
+	// Convert each PR using the same converter method
 	for _, node := range query.Search.Nodes {
-		pr := PullRequest{
-			Number:    int(node.PullRequest.Number),
-			Title:     string(node.PullRequest.Title),
-			State:     string(node.PullRequest.State),
-			CreatedAt: node.PullRequest.CreatedAt,
-			UpdatedAt: node.PullRequest.UpdatedAt,
-			Author: Author{
-				Login: string(node.PullRequest.Author.Login),
-			},
-		}
-
-		// Handle optional timestamps
-		if node.PullRequest.ClosedAt != nil {
-			pr.ClosedAt = node.PullRequest.ClosedAt
-		}
-		if node.PullRequest.MergedAt != nil {
-			pr.MergedAt = node.PullRequest.MergedAt
-		}
-
+		pr := c.convertGraphQLPR(&node.PullRequest)
 		page.PullRequests = append(page.PullRequests, pr)
 	}
 

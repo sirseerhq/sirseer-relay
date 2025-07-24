@@ -200,7 +200,7 @@ func TestMockClient_Pagination(t *testing.T) {
 			State:     "open",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
-			Author:    Author{Login: "test"},
+			Author:    User{Login: "test", Type: "User"},
 		})
 	}
 

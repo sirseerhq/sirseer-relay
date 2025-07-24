@@ -33,8 +33,9 @@ func TestPullRequestJSONSerialization(t *testing.T) {
 		UpdatedAt: now.Add(time.Hour),
 		ClosedAt:  &closedAt,
 		MergedAt:  &mergedAt,
-		Author: Author{
+		Author: User{
 			Login: "johndoe",
+			Type:  "User",
 		},
 	}
 
@@ -76,8 +77,9 @@ func TestPullRequestOptionalFields(t *testing.T) {
 		State:     "open",
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
-		Author: Author{
+		Author: User{
 			Login: "janedoe",
+			Type:  "User",
 		},
 	}
 

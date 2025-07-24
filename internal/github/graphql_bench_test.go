@@ -119,8 +119,9 @@ func generateMockPR(num int) PullRequest {
 		UpdatedAt: now.Add(-24 * time.Hour),
 		ClosedAt:  &closedAt,
 		MergedAt:  &mergedAt,
-		Author: Author{
+		Author: User{
 			Login: "developer123",
+			Type:  "User",
 		},
 	}
 }
