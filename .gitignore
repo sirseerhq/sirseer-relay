@@ -70,3 +70,6 @@ test_output.log
 
 # Benchmark outputs
 benchmarks/
+
+# Performance reports (internal use only)
+PERFORMANCE_RESULTS.md

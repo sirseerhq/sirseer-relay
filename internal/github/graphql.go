@@ -40,11 +40,22 @@ type GraphQLClient struct {
 //   - Automatic timeout handling (set at CLI level)
 //   - Response size limiting to prevent memory issues
 //   - User-Agent header for API compliance
+//   - Optimized connection pooling for API performance
 func NewGraphQLClient(token string) *GraphQLClient {
+	// Create optimized transport with connection pooling
+	transport := &http.Transport{
+		MaxIdleConns:        10,
+		MaxIdleConnsPerHost: 10, // Increased from default 2
+		MaxConnsPerHost:     10,
+		IdleConnTimeout:     90 * time.Second,
+		DisableCompression:  false,
+		ForceAttemptHTTP2:   true, // Ensure HTTP/2 is used
+	}
+
 	httpClient := &http.Client{
 		Transport: &authTransport{
 			token: token,
-			base:  http.DefaultTransport,
+			base:  transport,
 		},
 	}
 
