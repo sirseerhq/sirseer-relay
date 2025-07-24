@@ -1,0 +1,52 @@
+# Multi-Organization Configuration
+# For fetching from multiple GitHub organizations
+
+# Base configuration
+request_timeout: 300
+log_level: info
+
+# Organization-specific settings
+organizations:
+  kubernetes:
+    output_dir: "/data/kubernetes"
+    state_dir: "/var/lib/sirseer-relay/state/kubernetes"
+    # Custom rate limits for this org
+    rate_limit_threshold: 200
+    # Priority repositories (fetch first)
+    priority_repos:
+      - kubernetes/kubernetes
+      - kubernetes/client-go
+      - kubernetes/test-infra
+  
+  prometheus:
+    output_dir: "/data/prometheus"
+    state_dir: "/var/lib/sirseer-relay/state/prometheus"
+    # Different batch size for this org
+    batch_size: 75
+  
+  grafana:
+    output_dir: "/data/grafana"
+    state_dir: "/var/lib/sirseer-relay/state/grafana"
+    # Exclude certain repos
+    exclude_repos:
+      - ".*-test$"
+      - "^archived-.*"
+
+# Default settings for orgs not listed above
+default:
+  output_dir: "/data/default"
+  state_dir: "/var/lib/sirseer-relay/state/default"
+  batch_size: 100
+
+# Parallel organization processing
+parallel_orgs: 3       # Process up to 3 orgs simultaneously
+org_delay: 60         # Seconds between org fetches
+
+# Repository filtering
+include_archived: false
+include_private: true  # Requires appropriate token permissions
+repo_filter: ".*"     # Regex to match repository names
+
+# Output organization
+group_by_org: true    # Create subdirectories per org
+unified_metadata: true # Single metadata file for all orgs

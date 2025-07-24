@@ -1,0 +1,17 @@
+[Unit]
+Description=Daily SirSeer Relay Incremental Fetch Timer
+Documentation=https://github.com/sirseerhq/sirseer-relay
+
+[Timer]
+# Run daily at 2 AM
+OnCalendar=daily
+AccuracySec=1h
+
+# Catch up if the system was down
+Persistent=true
+
+# Randomize start time to avoid thundering herd
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

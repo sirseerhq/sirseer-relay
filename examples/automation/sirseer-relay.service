@@ -1,0 +1,46 @@
+[Unit]
+Description=SirSeer Relay Daily Incremental Fetch
+Documentation=https://github.com/sirseerhq/sirseer-relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=sirseer
+Group=sirseer
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/sirseer-relay /var/log/sirseer-relay
+
+# Environment
+Environment="GITHUB_TOKEN_FILE=/etc/sirseer-relay/github-token"
+Environment="SIRSEER_CONFIG=/etc/sirseer-relay/config.yaml"
+Environment="SIRSEER_STATE_DIR=/var/lib/sirseer-relay/state"
+Environment="SIRSEER_LOG_DIR=/var/log/sirseer-relay"
+
+# Load GitHub token from file
+EnvironmentFile=-/etc/sirseer-relay/environment
+
+# Execute the daily script
+ExecStartPre=/usr/bin/test -f /etc/sirseer-relay/repositories.txt
+ExecStart=/usr/local/bin/sirseer-daily.sh
+
+# Restart policy
+Restart=on-failure
+RestartSec=300
+
+# Resource limits
+MemoryMax=500M
+CPUQuota=50%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sirseer-relay
+
+[Install]
+WantedBy=multi-user.target

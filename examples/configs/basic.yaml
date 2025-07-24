@@ -1,0 +1,14 @@
+# Basic SirSeer Relay Configuration
+# This is a minimal configuration suitable for most use cases
+
+# Request timeout in seconds (default: 300)
+request_timeout: 300
+
+# Output file path (can be overridden with --output flag)
+output: "./data/output.ndjson"
+
+# State directory for incremental fetches
+state_dir: "$HOME/.sirseer-relay"
+
+# Log level: debug, info, warn, error
+log_level: info

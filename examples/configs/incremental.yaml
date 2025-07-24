@@ -1,0 +1,31 @@
+# Incremental Fetch Configuration
+# Optimized for regular incremental updates
+
+# Shorter timeout for incremental fetches
+request_timeout: 180
+
+# Output configuration
+output: "./data/incremental.ndjson"
+append_mode: true  # Append to existing file
+
+# State management
+state_dir: "$HOME/.sirseer-relay"
+state_backup: true      # Keep backup of state files
+state_checksum: true    # Validate state integrity
+
+# Incremental fetch behavior
+incremental_default: true    # Make incremental the default mode
+full_fetch_interval: 7       # Days between full fetches (0 = never)
+
+# Performance
+batch_size: 50          # Smaller batches for incremental
+cache_enabled: true     # Cache GraphQL query results
+cache_ttl: 300         # Cache TTL in seconds
+
+# Error handling
+partial_fetch_allowed: true   # Continue on non-fatal errors
+save_on_error: true          # Save state even on errors
+
+# Monitoring
+track_incremental_stats: true
+stats_file: "./data/stats.json"

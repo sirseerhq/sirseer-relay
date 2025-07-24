@@ -1,0 +1,53 @@
+# Enterprise SirSeer Relay Configuration
+# Advanced configuration for enterprise deployments
+
+# Request timeout (longer for large repos)
+request_timeout: 600
+
+# Output configuration
+output: "/data/sirseer/outputs/default.ndjson"
+output_dir: "/data/sirseer/outputs"
+
+# State management
+state_dir: "/var/lib/sirseer-relay/state"
+
+# Metadata directory for monitoring
+metadata_dir: "/var/lib/sirseer-relay/metadata"
+
+# GitHub Enterprise settings (if applicable)
+# github_api_url: "https://github.enterprise.com/api/v3"
+# github_graphql_url: "https://github.enterprise.com/api/graphql"
+
+# Advanced settings
+batch_size: 100        # PRs per GraphQL request
+max_retries: 5         # Network retry attempts
+retry_delay: 1         # Initial retry delay in seconds
+max_retry_delay: 30    # Maximum retry delay
+
+# Rate limiting
+rate_limit_threshold: 100  # Remaining requests before preemptive wait
+rate_limit_buffer: 300     # Seconds to wait before limit reset
+
+# Performance tuning
+parallel_requests: 1   # Concurrent GraphQL requests (use with caution)
+compression: true      # Enable gzip compression for requests
+
+# Logging
+log_level: info
+log_file: "/var/log/sirseer-relay/sirseer-relay.log"
+log_format: json      # json or text
+log_rotation: true
+log_max_size: 100     # MB
+log_max_age: 30       # days
+log_max_backups: 10
+
+# Monitoring
+enable_metrics: true
+metrics_port: 9090
+metrics_path: "/metrics"
+
+# Security
+validate_certificates: true
+# ca_bundle: "/etc/ssl/certs/ca-certificates.crt"
+# client_cert: "/etc/sirseer-relay/client.crt"
+# client_key: "/etc/sirseer-relay/client.key"

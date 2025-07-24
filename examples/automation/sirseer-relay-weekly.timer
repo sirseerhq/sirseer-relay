@@ -1,0 +1,17 @@
+[Unit]
+Description=Weekly SirSeer Relay Full Scan Timer
+Documentation=https://github.com/sirseerhq/sirseer-relay
+
+[Timer]
+# Run weekly on Sunday at 1 AM
+OnCalendar=weekly
+OnCalendar=Sun *-*-* 01:00:00
+
+# Catch up if the system was down
+Persistent=true
+
+# Randomize to avoid all systems hitting GitHub at once
+RandomizedDelaySec=2h
+
+[Install]
+WantedBy=timers.target
