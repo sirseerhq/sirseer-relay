@@ -48,6 +48,9 @@ build/
 .DS_Store
 Thumbs.db
 
+# SirSeer Relay output files
+output/
+
 # Test output
 test-output/
 *.ndjson

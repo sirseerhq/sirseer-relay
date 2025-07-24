@@ -152,7 +152,7 @@ func TestRunFetch_MockClient(t *testing.T) {
 
 			// Run the fetch with default config
 			cfg := config.DefaultConfig()
-			err := runFetch(context.Background(), tt.repoArg, tt.token, tt.outputFile, "", false, 50, "", "", false, cfg)
+			err := runFetch(context.Background(), tt.repoArg, tt.token, tt.outputFile, "", "", false, 50, "", "", false, cfg)
 
 			// Check error
 			if (err != nil) != tt.wantErr {

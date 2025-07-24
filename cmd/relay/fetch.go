@@ -42,6 +42,7 @@ func newFetchCommand(configFile string) *cobra.Command {
 	var (
 		token          string
 		outputFile     string
+		outputDir      string
 		metadataFile   string
 		fetchAll       bool
 		requestTimeout int
@@ -112,13 +113,14 @@ Examples:
 				return fmt.Errorf("failed to get incremental flag: %w", err)
 			}
 
-			return runFetch(ctx, args[0], token, outputFile, metadataFile, fetchAll, batchSize, since, until, incremental, cfg)
+			return runFetch(ctx, args[0], token, outputFile, outputDir, metadataFile, fetchAll, batchSize, since, until, incremental, cfg)
 		},
 	}
 
 	// Define flags
 	cmd.Flags().StringVar(&token, "token", "", "GitHub personal access token (overrides GITHUB_TOKEN env var)")
 	cmd.Flags().StringVar(&outputFile, "output", "", "Output file path (default: stdout)")
+	cmd.Flags().StringVar(&outputDir, "output-dir", "", "Output directory for generated files (default: ./output)")
 	cmd.Flags().IntVar(&requestTimeout, "request-timeout", 180, "Request timeout in seconds (default: 3 minutes)")
 
 	// Pagination flag
@@ -144,7 +146,7 @@ Examples:
 // validates the GitHub token, creates the output writer, and delegates to either
 // fetchFirstPageWithOptions (default) or fetchAllPullRequestsWithOptions (with --all flag).
 // Returns an error if any step fails, which will be mapped to an appropriate exit code.
-func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile, metadataFile string, fetchAll bool, batchSize int, since, until string, incremental bool, cfg *config.Config) error {
+func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile, outputDir, metadataFile string, fetchAll bool, batchSize int, since, until string, incremental bool, cfg *config.Config) error {
 	// Parse repository argument
 	owner, repo, err := parseRepository(repoArg)
 	if err != nil {
@@ -158,7 +160,11 @@ func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile, metadataFile 
 	}
 
 	// Create output writer
-	writer, err := createOutputWriter(outputFile)
+	// If no output flags specified, use default output directory
+	if outputFile == "" && outputDir == "" {
+		outputDir = "output"
+	}
+	writer, generatedOutputFile, err := createOutputWriter(outputFile, outputDir, owner, repo)
 	if err != nil {
 		return err
 	}
@@ -186,6 +192,12 @@ func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile, metadataFile 
 		PageSize: batchSize,
 	}
 
+	// Handle metadata file path
+	if metadataFile == "" && generatedOutputFile != "" {
+		// Auto-generate metadata filename based on output file
+		metadataFile = strings.TrimSuffix(generatedOutputFile, ".ndjson") + "-metadata.json"
+	}
+
 	// Fetch all PRs if --all flag is set
 	if fetchAll {
 		return fetchAllPullRequestsWithOptions(ctx, client, owner, repo, writer, metadataFile, opts)
@@ -196,19 +208,54 @@ func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile, metadataFile 
 }
 
 // createOutputWriter creates an output writer based on the output file parameter.
-// If outputFile is empty, it writes to stdout. Otherwise, it creates a file writer.
-func createOutputWriter(outputFile string) (output.OutputWriter, error) {
-	if outputFile == "" {
-		// Write to stdout
-		return output.NewWriter(os.Stdout), nil
+// If outputFile is empty, it generates a timestamped filename in the output directory.
+// Returns the writer and the actual output file path used.
+func createOutputWriter(outputFile, outputDir, owner, repo string) (output.OutputWriter, string, error) {
+	// If explicit output file is specified
+	if outputFile != "" {
+		// Special case: "-" means stdout
+		if outputFile == "-" {
+			return output.NewWriter(os.Stdout), "", nil
+		}
+		// Otherwise use the specified file
+		fileWriter, err := output.NewFileWriter(outputFile)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to create output file: %w", err)
+		}
+		return fileWriter, outputFile, nil
 	}
 
-	// Write to file
-	fileWriter, err := output.NewFileWriter(outputFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create output file: %w", err)
+	// If writing to stdout (no output file or dir), return stdout writer
+	if outputDir == "" && outputFile == "" {
+		return output.NewWriter(os.Stdout), "", nil
 	}
-	return fileWriter, nil
+
+	// Generate timestamped filename in output directory
+	if outputDir == "" {
+		outputDir = "output"
+	}
+
+	// Create directory structure: output/<org>/<repo>/
+	dirPath := filepath.Join(outputDir, owner, repo)
+	if err := os.MkdirAll(dirPath, 0755); err != nil {
+		return nil, "", fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	// Generate timestamped filename
+	timestamp := time.Now().Format("20060102-150405")
+	filename := fmt.Sprintf("%s-%s.ndjson", repo, timestamp)
+	fullPath := filepath.Join(dirPath, filename)
+
+	// Create file writer
+	fileWriter, err := output.NewFileWriter(fullPath)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create output file: %w", err)
+	}
+
+	// Print the output path so user knows where to find it
+	fmt.Fprintf(os.Stderr, "Output file: %s\n", fullPath)
+
+	return fileWriter, fullPath, nil
 }
 
 // parseDateFlags parses and validates the since and until date flags.
