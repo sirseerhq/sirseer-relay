@@ -126,7 +126,12 @@ func (e *ErrorChainInspector) IsAuthError(err error) bool {
 	if errors.As(err, &authErr) && authErr.IsAuthError() {
 		return true
 	}
-	return e.base.IsAuthError(err)
+	// Fallback to base inspector if available
+	if e.base != nil {
+		return e.base.IsAuthError(err)
+	}
+	// If no base inspector, use default string checking
+	return NewInspector().IsAuthError(err)
 }
 
 // IsNotFoundError checks the error chain first, then falls back to base inspector.
@@ -135,7 +140,12 @@ func (e *ErrorChainInspector) IsNotFoundError(err error) bool {
 	if errors.As(err, &notFoundErr) && notFoundErr.IsNotFoundError() {
 		return true
 	}
-	return e.base.IsNotFoundError(err)
+	// Fallback to base inspector if available
+	if e.base != nil {
+		return e.base.IsNotFoundError(err)
+	}
+	// If no base inspector, use default string checking
+	return NewInspector().IsNotFoundError(err)
 }
 
 // IsRateLimitError checks the error chain first, then falls back to base inspector.
@@ -144,7 +154,12 @@ func (e *ErrorChainInspector) IsRateLimitError(err error) bool {
 	if errors.As(err, &rateLimitErr) && rateLimitErr.IsRateLimitError() {
 		return true
 	}
-	return e.base.IsRateLimitError(err)
+	// Fallback to base inspector if available
+	if e.base != nil {
+		return e.base.IsRateLimitError(err)
+	}
+	// If no base inspector, use default string checking
+	return NewInspector().IsRateLimitError(err)
 }
 
 // IsComplexityError checks the error chain first, then falls back to base inspector.
@@ -153,7 +168,12 @@ func (e *ErrorChainInspector) IsComplexityError(err error) bool {
 	if errors.As(err, &complexityErr) && complexityErr.IsComplexityError() {
 		return true
 	}
-	return e.base.IsComplexityError(err)
+	// Fallback to base inspector if available
+	if e.base != nil {
+		return e.base.IsComplexityError(err)
+	}
+	// If no base inspector, use default string checking
+	return NewInspector().IsComplexityError(err)
 }
 
 // IsNetworkError checks the error chain first, then falls back to base inspector.
@@ -162,5 +182,10 @@ func (e *ErrorChainInspector) IsNetworkError(err error) bool {
 	if errors.As(err, &networkErr) && networkErr.IsNetworkError() {
 		return true
 	}
-	return e.base.IsNetworkError(err)
+	// Fallback to base inspector if available
+	if e.base != nil {
+		return e.base.IsNetworkError(err)
+	}
+	// If no base inspector, use default string checking
+	return NewInspector().IsNetworkError(err)
 }
