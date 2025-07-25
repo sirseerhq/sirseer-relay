@@ -337,3 +337,82 @@ func TestMockClient_GetRepositoryInfo(t *testing.T) {
 		})
 	}
 }
+
+func TestMockClient_FetchPullRequestsSearch(t *testing.T) {
+	tests := []struct {
+		name        string
+		mock        *MockClient
+		opts        FetchOptions
+		wantPRCount int
+		wantHasNext bool
+		wantError   bool
+	}{
+		{
+			name: "search delegates to FetchPullRequests",
+			mock: &MockClient{
+				PullRequests: []PullRequest{
+					{Number: 1, Title: "PR 1"},
+					{Number: 2, Title: "PR 2"},
+					{Number: 3, Title: "PR 3"},
+				},
+				PageSize:      2,
+				SimulatePages: true,
+			},
+			opts:        FetchOptions{PageSize: 2},
+			wantPRCount: 2,
+			wantHasNext: true,
+			wantError:   false,
+		},
+		{
+			name: "search with error",
+			mock: NewMockClientWithOptions(
+				WithError(errors.New("search error")),
+			),
+			opts:      FetchOptions{PageSize: 10},
+			wantError: true,
+		},
+		{
+			name: "search with time filters",
+			mock: &MockClient{
+				PullRequests: []PullRequest{
+					{Number: 1, Title: "Recent PR"},
+				},
+				PageSize: 10,
+			},
+			opts: FetchOptions{
+				PageSize: 10,
+				Since:    timePtr(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)),
+				Until:    timePtr(time.Date(2024, 12, 31, 0, 0, 0, 0, time.UTC)),
+			},
+			wantPRCount: 1,
+			wantHasNext: false,
+			wantError:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			page, err := tt.mock.FetchPullRequestsSearch(context.Background(), "test", "repo", tt.opts)
+
+			if tt.wantError {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				if page == nil {
+					t.Error("expected non-nil page")
+				} else {
+					if len(page.PullRequests) != tt.wantPRCount {
+						t.Errorf("expected %d PRs, got %d", tt.wantPRCount, len(page.PullRequests))
+					}
+					if page.HasNextPage != tt.wantHasNext {
+						t.Errorf("expected HasNextPage=%v, got %v", tt.wantHasNext, page.HasNextPage)
+					}
+				}
+			}
+		})
+	}
+}

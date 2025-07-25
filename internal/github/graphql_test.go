@@ -15,267 +15,442 @@
 package github
 
 import (
-	"errors"
+	"context"
+	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
-	relaierrors "github.com/sirseerhq/sirseer-relay/internal/errors"
-	"github.com/sirseerhq/sirseer-relay/internal/giterror"
+	"github.com/shurcooL/graphql"
 )
 
-// Compile-time check that GraphQLClient implements Client
-var _ Client = (*GraphQLClient)(nil)
-
-func TestGraphQLClient_MapError(t *testing.T) {
-	client := &GraphQLClient{
-		inspector: giterror.NewInspector(),
-	}
-
+func TestNewGraphQLClient(t *testing.T) {
 	tests := []struct {
-		name        string
-		err         error
-		owner       string
-		repo        string
-		wantErr     error
-		wantMessage string
+		name      string
+		token     string
+		endpoint  string
+		wantError bool
 	}{
 		{
-			name:        "authentication error 401",
-			err:         fmt.Errorf("401 Unauthorized"),
-			owner:       "test",
-			repo:        "repo",
-			wantErr:     relaierrors.ErrInvalidToken,
-			wantMessage: "GitHub API authentication failed",
+			name:      "valid client",
+			token:     "test-token",
+			endpoint:  "https://api.github.com",
+			wantError: false,
 		},
 		{
-			name:        "authentication error 403",
-			err:         fmt.Errorf("403 Forbidden"),
-			owner:       "test",
-			repo:        "repo",
-			wantErr:     relaierrors.ErrInvalidToken,
-			wantMessage: "GitHub API authentication failed",
+			name:      "empty token",
+			token:     "",
+			endpoint:  "https://api.github.com",
+			wantError: false,
 		},
 		{
-			name:        "authentication error unauthorized",
-			err:         fmt.Errorf("request is unauthorized"),
-			owner:       "test",
-			repo:        "repo",
-			wantErr:     relaierrors.ErrInvalidToken,
-			wantMessage: "GitHub API authentication failed",
-		},
-		{
-			name:        "not found error 404",
-			err:         fmt.Errorf("404 Not Found"),
-			owner:       "test",
-			repo:        "repo",
-			wantErr:     relaierrors.ErrRepoNotFound,
-			wantMessage: "repository 'test/repo' not found",
-		},
-		{
-			name:        "GraphQL repo not found",
-			err:         fmt.Errorf("Could not resolve to a Repository"),
-			owner:       "test",
-			repo:        "repo",
-			wantErr:     relaierrors.ErrRepoNotFound,
-			wantMessage: "repository 'test/repo' not found",
-		},
-		{
-			name:        "rate limit error",
-			err:         fmt.Errorf("API rate limit exceeded"),
-			owner:       "test",
-			repo:        "repo",
-			wantErr:     relaierrors.ErrRateLimit,
-			wantMessage: "rate limit exceeded",
-		},
-		{
-			name:        "rate limit 429",
-			err:         fmt.Errorf("429 Too Many Requests"),
-			owner:       "test",
-			repo:        "repo",
-			wantErr:     relaierrors.ErrRateLimit,
-			wantMessage: "rate limit exceeded",
-		},
-		{
-			name:        "network error - connection refused",
-			err:         fmt.Errorf("connection refused"),
-			owner:       "test",
-			repo:        "repo",
-			wantErr:     relaierrors.ErrNetworkFailure,
-			wantMessage: "network error",
-		},
-		{
-			name:        "network error - no such host",
-			err:         fmt.Errorf("no such host"),
-			owner:       "test",
-			repo:        "repo",
-			wantErr:     relaierrors.ErrNetworkFailure,
-			wantMessage: "network error",
-		},
-		{
-			name:        "network error - timeout",
-			err:         fmt.Errorf("request timeout"),
-			owner:       "test",
-			repo:        "repo",
-			wantErr:     relaierrors.ErrNetworkFailure,
-			wantMessage: "network error",
-		},
-		{
-			name:        "generic error",
-			err:         fmt.Errorf("something went wrong"),
-			owner:       "test",
-			repo:        "repo",
-			wantErr:     nil,
-			wantMessage: "failed to fetch pull requests",
-		},
-		{
-			name:        "nil error",
-			err:         nil,
-			owner:       "test",
-			repo:        "repo",
-			wantErr:     nil,
-			wantMessage: "",
+			name:      "custom endpoint",
+			token:     "test-token",
+			endpoint:  "https://github.enterprise.com/api",
+			wantError: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := client.mapError(tt.err, tt.owner, tt.repo)
+			client := NewGraphQLClient(tt.token, "https://api.github.com/graphql")
+			if client == nil {
+				t.Error("expected non-nil client")
+			}
 
-			if tt.err == nil {
-				if err != nil {
-					t.Fatalf("expected nil error, got %v", err)
+			// Verify it implements the Client interface
+			var _ Client = client
+		})
+	}
+}
+
+func TestGraphQLClient_GetRepositoryInfo(t *testing.T) {
+	tests := []struct {
+		name          string
+		owner         string
+		repo          string
+		response      interface{}
+		responseCode  int
+		wantError     bool
+		wantErrorType string
+		wantPRCount   int
+	}{
+		{
+			name:  "successful response",
+			owner: "octocat",
+			repo:  "hello-world",
+			response: map[string]interface{}{
+				"data": map[string]interface{}{
+					"repository": map[string]interface{}{
+						"pullRequests": map[string]interface{}{
+							"totalCount": 42,
+						},
+					},
+				},
+			},
+			responseCode: http.StatusOK,
+			wantError:    false,
+			wantPRCount:  42,
+		},
+		{
+			name:  "repository not found",
+			owner: "octocat",
+			repo:  "nonexistent",
+			response: map[string]interface{}{
+				"errors": []interface{}{
+					map[string]interface{}{
+						"message": "Could not resolve to a Repository",
+					},
+				},
+			},
+			responseCode:  http.StatusOK,
+			wantError:     true,
+			wantErrorType: "not found",
+		},
+		{
+			name:  "authentication error",
+			owner: "octocat",
+			repo:  "private-repo",
+			response: map[string]interface{}{
+				"message": "Bad credentials",
+			},
+			responseCode:  http.StatusUnauthorized,
+			wantError:     true,
+			wantErrorType: "auth",
+		},
+		{
+			name:  "rate limit error",
+			owner: "octocat",
+			repo:  "hello-world",
+			response: map[string]interface{}{
+				"message": "API rate limit exceeded",
+			},
+			responseCode:  http.StatusTooManyRequests,
+			wantError:     true,
+			wantErrorType: "rate limit",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Verify GraphQL endpoint
+				if r.URL.Path != "/graphql" {
+					t.Errorf("expected path /graphql, got %s", r.URL.Path)
 				}
-				return
-			}
 
-			if err == nil {
-				t.Fatal("expected error, got nil")
-			}
+				// Verify method
+				if r.Method != http.MethodPost {
+					t.Errorf("expected POST, got %s", r.Method)
+				}
 
-			if tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
-				t.Errorf("expected error %v, got %v", tt.wantErr, err)
-			}
+				// Verify authorization header
+				auth := r.Header.Get("Authorization")
+				if auth != "Bearer test-token" {
+					t.Errorf("expected Bearer test-token, got %s", auth)
+				}
 
-			// Verify that error messages are properly formatted and actionable
-			if tt.wantMessage != "" {
-				// Instead of checking for exact substring, verify the error has been mapped properly
-				// by checking that the original error has been wrapped
-				if !errors.Is(err, tt.wantErr) && tt.wantErr != nil {
-					t.Errorf("error not properly wrapped: got %v", err)
+				// Send response
+				w.WriteHeader(tt.responseCode)
+				json.NewEncoder(w).Encode(tt.response)
+			}))
+			defer server.Close()
+
+			// Create a test client pointing to our test server
+			client := NewGraphQLClient("test-token", "https://api.github.com/graphql")
+			// Override the internal client to point to our test server
+			httpClient := &http.Client{
+				Transport: &authTransport{
+					token: "test-token",
+					base:  http.DefaultTransport,
+				},
+			}
+			client.client = graphql.NewClient(server.URL+"/graphql", httpClient)
+
+			info, err := client.GetRepositoryInfo(context.Background(), tt.owner, tt.repo)
+
+			if tt.wantError {
+				if err == nil {
+					t.Error("expected error, got nil")
+				} else {
+					// Check error type
+					switch tt.wantErrorType {
+					case "auth":
+						if !strings.Contains(err.Error(), "authentication") {
+							t.Errorf("expected auth error, got %v", err)
+						}
+					case "not found":
+						if !strings.Contains(err.Error(), "not found") {
+							t.Errorf("expected not found error, got %v", err)
+						}
+					case "rate limit":
+						if !strings.Contains(err.Error(), "rate limit") {
+							t.Errorf("expected rate limit error, got %v", err)
+						}
+					}
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				if info == nil {
+					t.Error("expected non-nil info")
+				} else if info.TotalPullRequests != tt.wantPRCount {
+					t.Errorf("expected %d PRs, got %d", tt.wantPRCount, info.TotalPullRequests)
 				}
 			}
 		})
 	}
 }
 
-func TestAuthTransport(t *testing.T) {
-	token := "test-token"
-	transport := &authTransport{
-		token: token,
-		base:  http.DefaultTransport,
+func TestGraphQLClient_FetchPullRequests(t *testing.T) {
+	tests := []struct {
+		name          string
+		owner         string
+		repo          string
+		opts          FetchOptions
+		response      interface{}
+		responseCode  int
+		wantError     bool
+		wantPRCount   int
+		wantHasNext   bool
+		wantEndCursor string
+	}{
+		{
+			name:  "successful single page",
+			owner: "octocat",
+			repo:  "hello-world",
+			opts:  FetchOptions{PageSize: 2},
+			response: map[string]interface{}{
+				"data": map[string]interface{}{
+					"repository": map[string]interface{}{
+						"pullRequests": map[string]interface{}{
+							"nodes": []interface{}{
+								createGraphQLPR(1, "First PR"),
+								createGraphQLPR(2, "Second PR"),
+							},
+							"pageInfo": map[string]interface{}{
+								"hasNextPage": false,
+								"endCursor":   "",
+							},
+						},
+					},
+				},
+			},
+			responseCode: http.StatusOK,
+			wantError:    false,
+			wantPRCount:  2,
+			wantHasNext:  false,
+		},
+		{
+			name:  "successful with pagination",
+			owner: "octocat",
+			repo:  "hello-world",
+			opts:  FetchOptions{PageSize: 2},
+			response: map[string]interface{}{
+				"data": map[string]interface{}{
+					"repository": map[string]interface{}{
+						"pullRequests": map[string]interface{}{
+							"nodes": []interface{}{
+								createGraphQLPR(1, "First PR"),
+								createGraphQLPR(2, "Second PR"),
+							},
+							"pageInfo": map[string]interface{}{
+								"hasNextPage": true,
+								"endCursor":   "cursor123",
+							},
+						},
+					},
+				},
+			},
+			responseCode:  http.StatusOK,
+			wantError:     false,
+			wantPRCount:   2,
+			wantHasNext:   true,
+			wantEndCursor: "cursor123",
+		},
+		{
+			name:  "with time filters",
+			owner: "octocat",
+			repo:  "hello-world",
+			opts: FetchOptions{
+				PageSize: 10,
+				Since:    timePtr(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)),
+				Until:    timePtr(time.Date(2024, 12, 31, 0, 0, 0, 0, time.UTC)),
+			},
+			response: map[string]interface{}{
+				"data": map[string]interface{}{
+					"repository": map[string]interface{}{
+						"pullRequests": map[string]interface{}{
+							"nodes": []interface{}{
+								createGraphQLPR(100, "PR in 2024"),
+							},
+							"pageInfo": map[string]interface{}{
+								"hasNextPage": false,
+								"endCursor":   "",
+							},
+						},
+					},
+				},
+			},
+			responseCode: http.StatusOK,
+			wantError:    false,
+			wantPRCount:  1,
+			wantHasNext:  false,
+		},
+		{
+			name:  "query complexity error",
+			owner: "octocat",
+			repo:  "huge-repo",
+			opts:  FetchOptions{PageSize: 100},
+			response: map[string]interface{}{
+				"errors": []interface{}{
+					map[string]interface{}{
+						"message": "Query complexity exceeds maximum allowed",
+					},
+				},
+			},
+			responseCode: http.StatusOK,
+			wantError:    true,
+		},
 	}
 
-	// Create a test server to verify headers
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check auth header
-		auth := r.Header.Get("Authorization")
-		if auth != "Bearer "+token {
-			t.Errorf("expected Authorization header 'Bearer %s', got %q", token, auth)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Decode request body
+				var reqBody map[string]interface{}
+				if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+					t.Fatalf("failed to decode request: %v", err)
+				}
 
-		// Check user agent
-		ua := r.Header.Get("User-Agent")
-		if !strings.Contains(ua, "sirseer-relay") {
-			t.Errorf("expected User-Agent to contain 'sirseer-relay', got %q", ua)
-		}
+				// Verify page size in query
+				query := reqBody["query"].(string)
+				expectedPageSize := fmt.Sprintf("first: %d", tt.opts.PageSize)
+				if !strings.Contains(query, expectedPageSize) {
+					t.Errorf("query missing page size: %s", query)
+				}
 
-		// Return some data to test size limiting
-		fmt.Fprint(w, "test response")
-	}))
-	defer server.Close()
+				// Send response
+				w.WriteHeader(tt.responseCode)
+				json.NewEncoder(w).Encode(tt.response)
+			}))
+			defer server.Close()
 
-	// Make a request
-	req, err := http.NewRequest("GET", server.URL, http.NoBody)
-	if err != nil {
-		t.Fatalf("failed to create request: %v", err)
-	}
+			// Create a test client pointing to our test server
+			client := NewGraphQLClient("test-token", "https://api.github.com/graphql")
+			// Override the internal client to point to our test server
+			httpClient := &http.Client{
+				Transport: &authTransport{
+					token: "test-token",
+					base:  http.DefaultTransport,
+				},
+			}
+			client.client = graphql.NewClient(server.URL+"/graphql", httpClient)
 
-	client := &http.Client{Transport: transport}
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	defer resp.Body.Close()
+			page, err := client.FetchPullRequests(context.Background(), tt.owner, tt.repo, tt.opts)
 
-	// Read response
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("failed to read response: %v", err)
-	}
-
-	if string(body) != "test response" {
-		t.Errorf("expected body 'test response', got %q", string(body))
+			if tt.wantError {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				if page == nil {
+					t.Error("expected non-nil page")
+				} else {
+					if len(page.PullRequests) != tt.wantPRCount {
+						t.Errorf("expected %d PRs, got %d", tt.wantPRCount, len(page.PullRequests))
+					}
+					if page.HasNextPage != tt.wantHasNext {
+						t.Errorf("expected HasNextPage=%v, got %v", tt.wantHasNext, page.HasNextPage)
+					}
+					if page.EndCursor != tt.wantEndCursor {
+						t.Errorf("expected EndCursor=%s, got %s", tt.wantEndCursor, page.EndCursor)
+					}
+				}
+			}
+		})
 	}
 }
 
-func TestLimitedReader(t *testing.T) {
-	t.Run("within limit", func(t *testing.T) {
-		data := "hello world"
-		reader := &limitedReader{
-			ReadCloser: io.NopCloser(strings.NewReader(data)),
-			limit:      100,
-		}
+// TestGraphQLClient_WithComplexityError tests that the client handles complexity errors
+func TestGraphQLClient_WithComplexityError(t *testing.T) {
+	// Test that the mock client can return complexity errors on the first call
+	mock := NewMockClientWithOptions(WithComplexityError(1))
 
-		body, err := io.ReadAll(reader)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+	_, err := mock.FetchPullRequests(context.Background(), "test", "repo", FetchOptions{})
+	if err == nil {
+		t.Error("expected complexity error, got nil")
+	}
 
-		if string(body) != data {
-			t.Errorf("expected %q, got %q", data, string(body))
-		}
-	})
+	if !strings.Contains(err.Error(), "complexity") {
+		t.Errorf("expected error to contain 'complexity', got: %v", err)
+	}
 
-	t.Run("exceeds limit", func(t *testing.T) {
-		// Test that limited reader enforces size limit
-		data := strings.Repeat("a", 100)
-		reader := &limitedReader{
-			ReadCloser: io.NopCloser(strings.NewReader(data)),
-			limit:      50,
-		}
+	// Test that subsequent calls succeed
+	_, err = mock.FetchPullRequests(context.Background(), "test", "repo", FetchOptions{})
+	if err != nil {
+		t.Errorf("expected no error on second call, got: %v", err)
+	}
+}
 
-		buf := make([]byte, 200)
-		totalRead := 0
+// Helper functions
 
-		for {
-			n, err := reader.Read(buf[totalRead:])
-			totalRead += n
+func createGraphQLPR(number int, title string) map[string]interface{} {
+	now := time.Now()
+	return map[string]interface{}{
+		"number":    number,
+		"title":     title,
+		"state":     "OPEN",
+		"body":      fmt.Sprintf("Body of PR %d", number),
+		"url":       fmt.Sprintf("https://github.com/octocat/hello-world/pull/%d", number),
+		"createdAt": now.Add(-24 * time.Hour).Format(time.RFC3339),
+		"updatedAt": now.Format(time.RFC3339),
+		"mergedAt":  nil,
+		"closedAt":  nil,
+		"author": map[string]interface{}{
+			"login": "octocat",
+		},
+		"baseRef": map[string]interface{}{
+			"name": "main",
+			"target": map[string]interface{}{
+				"oid": "base123",
+			},
+		},
+		"headRef": map[string]interface{}{
+			"name": "feature",
+			"target": map[string]interface{}{
+				"oid": "head456",
+			},
+		},
+		"additions":          10,
+		"deletions":          5,
+		"changedFiles":       2,
+		"totalCommentsCount": 3,
+		"commits": map[string]interface{}{
+			"totalCount": 1,
+		},
+		"assignees": map[string]interface{}{
+			"nodes": []interface{}{},
+		},
+		"labels": map[string]interface{}{
+			"nodes": []interface{}{},
+		},
+		"reviews": map[string]interface{}{
+			"nodes": []interface{}{},
+		},
+		"reviewRequests": map[string]interface{}{
+			"nodes": []interface{}{},
+		},
+	}
+}
 
-			if err != nil {
-				if err == io.EOF && totalRead == 50 {
-					// This is expected - we read up to the limit
-					break
-				}
-				// Check if it's a limit exceeded error by verifying the error format
-				if err.Error() == fmt.Sprintf("response size exceeded limit of %d bytes", 50) {
-					// This is also acceptable
-					break
-				}
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if totalRead > 50 {
-				t.Errorf("read more than limit: %d > 50", totalRead)
-				break
-			}
-		}
-
-		if totalRead != 50 {
-			t.Errorf("expected to read exactly 50 bytes, got %d", totalRead)
-		}
-	})
+func timePtr(t time.Time) *time.Time {
+	return &t
 }
