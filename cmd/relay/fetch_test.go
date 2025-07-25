@@ -1677,13 +1677,3 @@ func TestPerformIncrementalFetch(t *testing.T) {
 		})
 	}
 }
-
-// Helper function
-func contains(slice []int, val int) bool {
-	for _, v := range slice {
-		if v == val {
-			return true
-		}
-	}
-	return false
-}

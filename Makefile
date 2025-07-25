@@ -8,6 +8,7 @@ GOFLAGS=-v
 BUILD_DIR=build
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS=-ldflags "-X github.com/sirseerhq/sirseer-relay/pkg/version.Version=$(VERSION)"
+LICENSE_HOLDER=SirSeer, LLC
 
 # Build the binary
 .PHONY: build
@@ -37,7 +38,7 @@ license:
 		echo "Installing addlicense..."; \
 		go install github.com/google/addlicense@latest; \
 	fi
-	PATH=$$PATH:$$(go env GOPATH)/bin addlicense -f .license-header -c "SirSeer, LLC" -y 2025 $$(find . -name '*.go')
+	PATH=$$PATH:$$(go env GOPATH)/bin addlicense -f .license-header -c "$(LICENSE_HOLDER)" -y 2025 $$(find . -name '*.go')
 
 # Check license headers
 .PHONY: license-check
@@ -47,9 +48,9 @@ license-check:
 		echo "Installing addlicense..."; \
 		go install github.com/google/addlicense@latest; \
 	fi
-	@if PATH=$$PATH:$$(go env GOPATH)/bin addlicense -check -f .license-header -c "SirSeer Inc." -y 2025 $$(find . -name '*.go') 2>&1 | grep -q .; then \
+	@if PATH=$$PATH:$$(go env GOPATH)/bin addlicense -check -f .license-header -c "$(LICENSE_HOLDER)" -y 2025 $$(find . -name '*.go') 2>&1 | grep -q .; then \
 		echo "ERROR: Some files are missing required license headers."; \
-		PATH=$$PATH:$$(go env GOPATH)/bin addlicense -check -f .license-header -c "SirSeer Inc." -y 2025 $$(find . -name '*.go'); \
+		PATH=$$PATH:$$(go env GOPATH)/bin addlicense -check -f .license-header -c "$(LICENSE_HOLDER)" -y 2025 $$(find . -name '*.go'); \
 		exit 1; \
 	else \
 		echo "All files have proper license headers."; \
@@ -64,6 +65,8 @@ lint:
 		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
 	fi
 	PATH=$$PATH:$$(go env GOPATH)/bin golangci-lint run ./...
+	@echo "Running go vet..."
+	$(GO) vet ./...
 
 # Format code
 .PHONY: fmt
