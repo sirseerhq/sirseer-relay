@@ -119,20 +119,141 @@ func NewTimeoutServer(t *testing.T, timeoutCount int) *MockServer {
 	return &MockServer{Server: server, RequestCount: requestCount}
 }
 
+// MockServerBuilder provides a fluent API for creating configured mock servers
+type MockServerBuilder struct {
+	t                *testing.T
+	failureCount     int
+	errorCode        int
+	retryAfter       int
+	responseDelay    time.Duration
+	totalPRs         int
+	pageSize         int
+	rateLimitResetAt int64
+	complexityError  bool
+	customHandler    http.HandlerFunc
+}
+
+// NewMockServerBuilder creates a new mock server builder
+func NewMockServerBuilder(t *testing.T) *MockServerBuilder {
+	t.Helper()
+	return &MockServerBuilder{
+		t:        t,
+		pageSize: 10,
+	}
+}
+
+// WithFailures configures the server to fail N times before succeeding
+func (b *MockServerBuilder) WithFailures(count int, errorCode int) *MockServerBuilder {
+	b.failureCount = count
+	b.errorCode = errorCode
+	return b
+}
+
+// WithRateLimit configures rate limiting behavior
+func (b *MockServerBuilder) WithRateLimit(retryAfter int) *MockServerBuilder {
+	b.retryAfter = retryAfter
+	return b
+}
+
+// WithRateLimitReset configures rate limit reset time
+func (b *MockServerBuilder) WithRateLimitReset(resetAt int64) *MockServerBuilder {
+	b.rateLimitResetAt = resetAt
+	return b
+}
+
+// WithResponseDelay adds a delay before responding
+func (b *MockServerBuilder) WithResponseDelay(delay time.Duration) *MockServerBuilder {
+	b.responseDelay = delay
+	return b
+}
+
+// WithPullRequests configures the number of PRs to return
+func (b *MockServerBuilder) WithPullRequests(total int, pageSize int) *MockServerBuilder {
+	b.totalPRs = total
+	b.pageSize = pageSize
+	return b
+}
+
+// WithComplexityError simulates query complexity errors
+func (b *MockServerBuilder) WithComplexityError() *MockServerBuilder {
+	b.complexityError = true
+	return b
+}
+
+// WithCustomHandler uses a custom handler function
+func (b *MockServerBuilder) WithCustomHandler(handler http.HandlerFunc) *MockServerBuilder {
+	b.customHandler = handler
+	return b
+}
+
+// Build creates the configured mock server
+func (b *MockServerBuilder) Build() *MockServer {
+	if b.customHandler != nil {
+		server := httptest.NewServer(b.customHandler)
+		return &MockServer{Server: server}
+	}
+
+	var requestCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&requestCount, 1)
+
+		// Add response delay if configured
+		if b.responseDelay > 0 {
+			time.Sleep(b.responseDelay)
+		}
+
+		// Handle transient failures
+		if b.failureCount > 0 && count <= int32(b.failureCount) {
+			if b.retryAfter > 0 {
+				w.Header().Set("Retry-After", strconv.Itoa(b.retryAfter))
+			}
+			if b.rateLimitResetAt > 0 {
+				w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(b.rateLimitResetAt, 10))
+			}
+			w.WriteHeader(b.errorCode)
+			if b.errorCode == 429 {
+				w.Write([]byte(`{"message": "API rate limit exceeded"}`))
+			} else {
+				w.Write([]byte(http.StatusText(b.errorCode)))
+			}
+			return
+		}
+
+		// Handle complexity error
+		if b.complexityError {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"errors": []interface{}{
+					map[string]interface{}{
+						"message": "Query complexity exceeds maximum allowed",
+					},
+				},
+			})
+			return
+		}
+
+		// Default: return PRs
+		startNum := 1
+		endNum := b.pageSize
+		if b.totalPRs > 0 && endNum > b.totalPRs {
+			endNum = b.totalPRs
+		}
+		hasMore := b.totalPRs > 0 && endNum < b.totalPRs
+
+		response := GeneratePRResponse(startNum, endNum, hasMore)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+
+	return &MockServer{Server: server, RequestCount: requestCount}
+}
+
 // GeneratePRResponse generates a mock GraphQL response with PRs
 func GeneratePRResponse(startNum, endNum int, hasMore bool) map[string]interface{} {
 	prs := make([]map[string]interface{}, 0)
 
 	for i := startNum; i <= endNum; i++ {
-		prs = append(prs, map[string]interface{}{
-			"number":    i,
-			"title":     fmt.Sprintf("PR %d", i),
-			"state":     "OPEN",
-			"createdAt": time.Now().AddDate(0, 0, -i).Format(time.RFC3339),
-			"author": map[string]interface{}{
-				"login": fmt.Sprintf("user%d", i),
-			},
-		})
+		prs = append(prs, CreatePullRequest(i))
 	}
 
 	var cursor *string
@@ -152,6 +273,62 @@ func GeneratePRResponse(startNum, endNum int, hasMore bool) map[string]interface
 					},
 				},
 			},
+		},
+	}
+}
+
+// CreatePullRequest creates a single PR with realistic data
+func CreatePullRequest(number int) map[string]interface{} {
+	now := time.Now()
+	createdAt := now.AddDate(0, 0, -number)
+	updatedAt := createdAt.Add(time.Hour * 24)
+
+	return map[string]interface{}{
+		"number":    number,
+		"title":     fmt.Sprintf("PR %d", number),
+		"state":     "OPEN",
+		"body":      fmt.Sprintf("This is the body of PR %d", number),
+		"url":       fmt.Sprintf("https://github.com/test/repo/pull/%d", number),
+		"createdAt": createdAt.Format(time.RFC3339),
+		"updatedAt": updatedAt.Format(time.RFC3339),
+		"mergedAt":  nil,
+		"closedAt":  nil,
+		"merged":    false,
+		"author": map[string]interface{}{
+			"login": fmt.Sprintf("user%d", number),
+		},
+		"baseRef": map[string]interface{}{
+			"name": "main",
+			"target": map[string]interface{}{
+				"oid": "base" + strconv.Itoa(number),
+			},
+		},
+		"headRef": map[string]interface{}{
+			"name": fmt.Sprintf("feature-%d", number),
+			"target": map[string]interface{}{
+				"oid": "head" + strconv.Itoa(number),
+			},
+		},
+		"additions":          10 + number,
+		"deletions":          5 + number,
+		"changedFiles":       2 + (number % 3),
+		"comments":           number % 5,
+		"reviewComments":     number % 3,
+		"totalCommentsCount": number % 5,
+		"commits": map[string]interface{}{
+			"totalCount": 1 + (number % 4),
+		},
+		"assignees": map[string]interface{}{
+			"nodes": []interface{}{},
+		},
+		"labels": map[string]interface{}{
+			"nodes": []interface{}{},
+		},
+		"reviews": map[string]interface{}{
+			"nodes": []interface{}{},
+		},
+		"reviewRequests": map[string]interface{}{
+			"nodes": []interface{}{},
 		},
 	}
 }
