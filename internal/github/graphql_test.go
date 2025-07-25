@@ -35,19 +35,19 @@ func TestNewGraphQLClient(t *testing.T) {
 		wantError bool
 	}{
 		{
-			name:      "valid client",
+			name:      "createsClientWithValidToken",
 			token:     "test-token",
 			endpoint:  "https://api.github.com",
 			wantError: false,
 		},
 		{
-			name:      "empty token",
+			name:      "createsClientWithEmptyToken",
 			token:     "",
 			endpoint:  "https://api.github.com",
 			wantError: false,
 		},
 		{
-			name:      "custom endpoint",
+			name:      "createsClientWithCustomEndpoint",
 			token:     "test-token",
 			endpoint:  "https://github.enterprise.com/api",
 			wantError: false,
@@ -79,7 +79,7 @@ func TestGraphQLClient_GetRepositoryInfo(t *testing.T) {
 		wantPRCount   int
 	}{
 		{
-			name:  "successful response",
+			name:  "returnsRepositoryInfoSuccessfully",
 			owner: "octocat",
 			repo:  "hello-world",
 			response: map[string]interface{}{
@@ -96,7 +96,7 @@ func TestGraphQLClient_GetRepositoryInfo(t *testing.T) {
 			wantPRCount:  42,
 		},
 		{
-			name:  "repository not found",
+			name:  "returnsErrorWhenRepositoryNotFound",
 			owner: "octocat",
 			repo:  "nonexistent",
 			response: map[string]interface{}{
@@ -111,7 +111,7 @@ func TestGraphQLClient_GetRepositoryInfo(t *testing.T) {
 			wantErrorType: "not found",
 		},
 		{
-			name:  "authentication error",
+			name:  "returnsAuthErrorForInvalidCredentials",
 			owner: "octocat",
 			repo:  "private-repo",
 			response: map[string]interface{}{
@@ -122,7 +122,7 @@ func TestGraphQLClient_GetRepositoryInfo(t *testing.T) {
 			wantErrorType: "auth",
 		},
 		{
-			name:  "rate limit error",
+			name:  "returnsRateLimitErrorWhenAPILimitExceeded",
 			owner: "octocat",
 			repo:  "hello-world",
 			response: map[string]interface{}{
