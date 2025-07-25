@@ -179,7 +179,7 @@ func TestRateLimitProgressBar(t *testing.T) {
 		}
 
 		// Subsequent requests succeed
-		response := generatePRResponse(1, 10, false)
+		response := testutil.GeneratePRResponse(1, 10, false)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	}))
@@ -240,7 +240,7 @@ func setupRateLimitServer(t *testing.T, statusCode int, retryAfter string, waitS
 		}
 
 		// Second request - success
-		response := generatePRResponse(1, 10, false)
+		response := testutil.GeneratePRResponse(1, 10, false)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	}))
@@ -262,7 +262,7 @@ func setupRateLimitResetServer(t *testing.T, statusCode int, resetTime int64) *h
 		}
 
 		// Second request - success
-		response := generatePRResponse(1, 10, false)
+		response := testutil.GeneratePRResponse(1, 10, false)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	}))
@@ -283,7 +283,7 @@ func setupMultipleRateLimitServer(t *testing.T, rateLimitCount int) *httptest.Se
 		}
 
 		// Success after rate limits
-		response := generatePRResponse(1, 10, false)
+		response := testutil.GeneratePRResponse(1, 10, false)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	}))
@@ -314,7 +314,7 @@ func setupRateLimitWithProgressServer(t *testing.T) *httptest.Server {
 		start := int((page-1)*25 + 1)
 		end := int(page * 25)
 
-		response := generatePRResponse(start, end, hasNext)
+		response := testutil.GeneratePRResponse(start, end, hasNext)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	}))
@@ -404,4 +404,3 @@ func TestRateLimitEdgeCases(t *testing.T) {
 		})
 	}
 }
-

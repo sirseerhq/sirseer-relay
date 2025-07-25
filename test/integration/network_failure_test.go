@@ -227,7 +227,7 @@ func TestNetworkFailureWithState(t *testing.T) {
 			start := int((page-1)*25 + 1)
 			end := int(page * 25)
 
-			response := generatePRResponse(start, end, hasNext)
+			response := testutil.GeneratePRResponse(start, end, hasNext)
 			response["data"].(map[string]interface{})["repository"].(map[string]interface{})["pullRequests"].(map[string]interface{})["pageInfo"].(map[string]interface{})["endCursor"] = fmt.Sprintf("cursor%d", page)
 
 			w.Header().Set("Content-Type", "application/json")
@@ -240,7 +240,7 @@ func TestNetworkFailureWithState(t *testing.T) {
 			// Resume from saved state
 			if req.Variables.After == "cursor2" {
 				// Correct cursor, continue
-				response := generatePRResponse(51, 75, false)
+				response := testutil.GeneratePRResponse(51, 75, false)
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(response)
 			} else {
@@ -318,7 +318,7 @@ func setupConnectionRefusedServer(t *testing.T, refuseCount int) *httptest.Serve
 
 				if count > int32(refuseCount) {
 					// Success after connection refusals
-					response := generatePRResponse(1, 10, false)
+					response := testutil.GeneratePRResponse(1, 10, false)
 					w.Header().Set("Content-Type", "application/json")
 					json.NewEncoder(w).Encode(response)
 				}
@@ -391,7 +391,7 @@ func setupPartialResponseServer(t *testing.T) *httptest.Server {
 		start := (page-1)*25 + 1
 		end := page * 25
 
-		response := generatePRResponse(start, end, hasNext)
+		response := testutil.GeneratePRResponse(start, end, hasNext)
 		if hasNext {
 			response["data"].(map[string]interface{})["repository"].(map[string]interface{})["pullRequests"].(map[string]interface{})["pageInfo"].(map[string]interface{})["endCursor"] = fmt.Sprintf("cursor%d", page)
 		}
@@ -434,7 +434,7 @@ func TestNetworkResilienceStressTest(t *testing.T) {
 		start := (page-1)*10 + 1
 		end := page * 10
 
-		response := generatePRResponse(start, end, hasNext)
+		response := testutil.GeneratePRResponse(start, end, hasNext)
 		if hasNext {
 			response["data"].(map[string]interface{})["repository"].(map[string]interface{})["pullRequests"].(map[string]interface{})["pageInfo"].(map[string]interface{})["endCursor"] = fmt.Sprintf("cursor%d", page)
 		}
