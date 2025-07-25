@@ -169,4 +169,3 @@ func AssertGraphQLRequest(t *testing.T, r *http.Request) {
 		t.Errorf("Expected Content-Type: application/json, got: %s", ct)
 	}
 }
-
