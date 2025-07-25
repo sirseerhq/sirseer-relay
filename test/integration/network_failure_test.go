@@ -283,50 +283,21 @@ func TestNetworkFailureWithState(t *testing.T) {
 // Helper functions for network failure testing
 
 func setupTransientErrorServer(t *testing.T, errorCode int, failCount int) *httptest.Server {
-	var requestCount int32
-
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		count := atomic.AddInt32(&requestCount, 1)
-
-		if count <= int32(failCount) {
-			// Fail for first N requests
-			w.WriteHeader(errorCode)
-			w.Write([]byte(http.StatusText(errorCode)))
-			return
-		}
-
-		// Success after failures
-		response := generatePRResponse(1, 10, false)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
-	}))
+	// Use the new mock server builder for consistency
+	return testutil.NewMockServerBuilder(t).
+		WithFailures(failCount, errorCode).
+		WithPullRequests(10, 10).
+		Build().Server
 }
 
 func setupTimeoutServer(t *testing.T, timeoutCount int) *httptest.Server {
-	var requestCount int32
-
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		count := atomic.AddInt32(&requestCount, 1)
-
-		if count <= int32(timeoutCount) {
-			// Simulate timeout by sleeping longer than client timeout
-			time.Sleep(10 * time.Second)
-			return
-		}
-
-		// Success after timeouts
-		response := generatePRResponse(1, 10, false)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
-	}))
+	// Use the timeout server from testutil
+	return testutil.NewTimeoutServer(t, timeoutCount).Server
 }
 
 func setupPermanentErrorServer(t *testing.T, errorCode int) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Always fail
-		w.WriteHeader(errorCode)
-		w.Write([]byte(http.StatusText(errorCode)))
-	}))
+	// Use the error server from testutil
+	return testutil.NewErrorServer(t, errorCode).Server
 }
 
 func setupConnectionRefusedServer(t *testing.T, refuseCount int) *httptest.Server {
@@ -497,4 +468,3 @@ func TestNetworkResilienceStressTest(t *testing.T) {
 		t.Error("Expected some retries during stress test")
 	}
 }
-

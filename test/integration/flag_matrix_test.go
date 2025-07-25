@@ -390,59 +390,14 @@ func setupIncrementalMockServer(t *testing.T) *httptest.Server {
 	}))
 }
 
+// generatePRResponse is now a wrapper around the unified testutil function
 func generatePRResponse(start, end int, hasNext bool) map[string]interface{} {
-	prs := make([]map[string]interface{}, 0)
-	for i := start; i <= end; i++ {
-		prs = append(prs, map[string]interface{}{
-			"number":    i,
-			"title":     fmt.Sprintf("PR %d", i),
-			"state":     "OPEN",
-			"createdAt": time.Now().Add(-time.Duration(end-i) * time.Hour).Format(time.RFC3339),
-			"updatedAt": time.Now().Add(-time.Duration(end-i) * time.Hour).Format(time.RFC3339),
-		})
-	}
-
-	endCursor := ""
-	if hasNext {
-		endCursor = fmt.Sprintf("cursor_after_%d", end)
-	}
-
-	return map[string]interface{}{
-		"data": map[string]interface{}{
-			"repository": map[string]interface{}{
-				"pullRequests": map[string]interface{}{
-					"nodes": prs,
-					"pageInfo": map[string]interface{}{
-						"hasNextPage": hasNext,
-						"endCursor":   endCursor,
-					},
-				},
-			},
-		},
-	}
+	return testutil.GeneratePRResponse(start, end, hasNext)
 }
 
+// verifyNDJSONOutput is now a wrapper around the unified testutil function
 func verifyNDJSONOutput(t *testing.T, outputFile string, expectedCount int) {
-	file, err := os.Open(outputFile)
-	if err != nil {
-		t.Fatalf("Failed to open output file: %v", err)
-	}
-	defer file.Close()
-
-	count := 0
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		var pr map[string]interface{}
-		if err := json.Unmarshal(scanner.Bytes(), &pr); err != nil {
-			t.Errorf("Invalid JSON on line %d: %v", count+1, err)
-			continue
-		}
-		count++
-	}
-
-	if count != expectedCount {
-		t.Errorf("Expected %d PRs, got %d", expectedCount, count)
-	}
+	testutil.AssertNDJSONOutput(t, outputFile, expectedCount)
 }
 
 func verifyDateRange(t *testing.T, outputFile, expectedSince, expectedUntil string) {
@@ -520,4 +475,3 @@ func indexOf(slice []string, item string) int {
 	}
 	return -1
 }
-
