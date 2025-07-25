@@ -302,16 +302,17 @@ func (c *GraphQLClient) mapError(err error, owner, repo string) error {
 	}
 
 	// Use the inspector to classify errors
+	// Check rate limit first, as 403 can be both auth and rate limit
+	if c.inspector.IsRateLimitError(err) {
+		return fmt.Errorf("GitHub API rate limit exceeded. Please wait before retrying: %w", relaierrors.ErrRateLimit)
+	}
+
 	if c.inspector.IsAuthError(err) {
 		return fmt.Errorf("GitHub API authentication failed. Please provide a valid token via --token flag or GITHUB_TOKEN environment variable: %w", relaierrors.ErrInvalidToken)
 	}
 
 	if c.inspector.IsNotFoundError(err) {
 		return fmt.Errorf("repository '%s/%s' not found. Please check the repository name and your access permissions: %w", owner, repo, relaierrors.ErrRepoNotFound)
-	}
-
-	if c.inspector.IsRateLimitError(err) {
-		return fmt.Errorf("GitHub API rate limit exceeded. Please wait before retrying: %w", relaierrors.ErrRateLimit)
 	}
 
 	if c.inspector.IsComplexityError(err) {

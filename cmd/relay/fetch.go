@@ -147,9 +147,11 @@ Examples:
 // fetchFirstPageWithOptions (default) or fetchAllPullRequestsWithOptions (with --all flag).
 // Returns an error if any step fails, which will be mapped to an appropriate exit code.
 func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile, outputDir, metadataFile string, fetchAll bool, batchSize int, since, until string, incremental bool, cfg *config.Config) error {
-	// Create default client factory
+	// Create default client factory with retry wrapper
 	clientFactory := func(token string) github.Client {
-		return github.NewGraphQLClient(token, cfg.GitHub.GraphQLEndpoint)
+		baseClient := github.NewGraphQLClient(token, cfg.GitHub.GraphQLEndpoint)
+		// Wrap with retry client for automatic retry on rate limits and network errors
+		return github.NewRetryClient(baseClient, github.DefaultRetryConfig())
 	}
 	return RunFetchWithClient(ctx, repoArg, tokenFlag, outputFile, outputDir, metadataFile, fetchAll, batchSize, since, until, incremental, cfg, clientFactory)
 }
