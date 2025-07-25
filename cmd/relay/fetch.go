@@ -171,8 +171,7 @@ func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile, outputDir, me
 	defer writer.Close()
 
 	// Create GitHub client with config endpoints
-	// TODO: Update github package to accept custom endpoints
-	client := github.NewGraphQLClient(token)
+	client := github.NewGraphQLClient(token, cfg.GitHub.GraphQLEndpoint)
 
 	// Parse and validate date flags
 	sinceTime, untilTime, err := parseDateFlags(since, until)

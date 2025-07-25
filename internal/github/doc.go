@@ -25,7 +25,7 @@
 //
 // Basic usage:
 //
-//	client := github.NewGraphQLClient("your-github-token")
+//	client := github.NewGraphQLClient("your-github-token", "https://api.github.com/graphql")
 //	page, err := client.FetchPullRequests(ctx, "golang", "go", github.FetchOptions{
 //	    PageSize: 50,
 //	})

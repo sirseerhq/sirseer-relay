@@ -37,14 +37,15 @@ type GraphQLClient struct {
 	inspector giterror.Inspector
 }
 
-// NewGraphQLClient creates a new GitHub GraphQL client with the provided token.
+// NewGraphQLClient creates a new GitHub GraphQL client with the provided token and endpoint.
 // The client is configured with:
 //   - Authentication via the provided token
+//   - Custom GraphQL endpoint URL (e.g., for GitHub Enterprise)
 //   - Automatic timeout handling (set at CLI level)
 //   - Response size limiting to prevent memory issues
 //   - User-Agent header for API compliance
 //   - Optimized connection pooling for API performance
-func NewGraphQLClient(token string) *GraphQLClient {
+func NewGraphQLClient(token string, endpoint string) *GraphQLClient {
 	// Create optimized transport with connection pooling
 	transport := &http.Transport{
 		MaxIdleConns:        10,
@@ -62,7 +63,7 @@ func NewGraphQLClient(token string) *GraphQLClient {
 		},
 	}
 
-	client := graphql.NewClient("https://api.github.com/graphql", httpClient)
+	client := graphql.NewClient(endpoint, httpClient)
 
 	return &GraphQLClient{
 		client:    client,
