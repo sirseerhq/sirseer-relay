@@ -32,9 +32,6 @@ import (
 
 // TestZeroPullRequestsRepository tests fetching from a repository with no PRs
 func TestZeroPullRequestsRepository(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	// Create mock server that returns empty PR list
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -86,9 +83,6 @@ func TestZeroPullRequestsRepository(t *testing.T) {
 
 // TestCtrlCDuringRateLimit tests signal handling during rate limit wait
 func TestCtrlCDuringRateLimit(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	// Create mock server that always returns rate limit with long wait
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -196,9 +190,6 @@ func TestInvalidFlagCombinations(t *testing.T) {
 
 // TestLargeRepositoryConstantMemory tests memory usage stays constant for large repos
 func TestLargeRepositoryConstantMemory(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" || os.Getenv("PERF_TEST") != "true" {
-		t.Skip("Skipping performance test. Set INTEGRATION_TEST=true and PERF_TEST=true to run.")
-	}
 
 	// Create mock server that simulates a very large repository
 	totalPRs := 50000

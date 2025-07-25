@@ -33,9 +33,6 @@ import (
 
 // TestRateLimitHandling tests various rate limit scenarios
 func TestRateLimitHandling(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	binaryPath := testutil.BuildBinary(t)
 
@@ -157,9 +154,6 @@ func TestRateLimitHandling(t *testing.T) {
 
 // TestRateLimitProgressBar tests that the progress bar works correctly during rate limit waits
 func TestRateLimitProgressBar(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	binaryPath := testutil.BuildBinary(t)
 	testDir := testutil.CreateTempDir(t, "ratelimit-test")
@@ -322,9 +316,6 @@ func setupRateLimitWithProgressServer(t *testing.T) *httptest.Server {
 
 // TestRateLimitEdgeCases tests edge cases in rate limit handling
 func TestRateLimitEdgeCases(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	binaryPath := testutil.BuildBinary(t)
 

@@ -35,9 +35,6 @@ import (
 
 // TestNetworkFailureRecovery tests various network failure scenarios and recovery
 func TestNetworkFailureRecovery(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	binaryPath := testutil.BuildBinary(t)
 
@@ -197,9 +194,6 @@ func TestNetworkFailureRecovery(t *testing.T) {
 
 // TestNetworkFailureWithState tests network failures during stateful operations
 func TestNetworkFailureWithState(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	binaryPath := testutil.BuildBinary(t)
 	testDir := testutil.CreateTempDir(t, "network-test")
@@ -403,9 +397,6 @@ func setupPartialResponseServer(t *testing.T) *httptest.Server {
 
 // TestNetworkResilienceStressTest performs a stress test of network resilience
 func TestNetworkResilienceStressTest(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" || os.Getenv("STRESS_TEST") != "true" {
-		t.Skip("Skipping stress test. Set INTEGRATION_TEST=true and STRESS_TEST=true to run.")
-	}
 
 	binaryPath := testutil.BuildBinary(t)
 	testDir := testutil.CreateTempDir(t, "network-test")

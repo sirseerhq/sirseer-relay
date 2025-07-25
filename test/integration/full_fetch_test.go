@@ -31,9 +31,6 @@ import (
 
 // TestFullRepositoryFetch tests fetching all PRs from a repository with the --all flag
 func TestFullRepositoryFetch(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	tests := []struct {
 		name         string
@@ -197,9 +194,6 @@ func TestFullRepositoryFetch(t *testing.T) {
 
 // TestPaginationMemoryEfficiency tests that pagination doesn't accumulate memory
 func TestPaginationMemoryEfficiency(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	// Simulate a large repository
 	totalPRs := 1000
@@ -270,9 +264,6 @@ func TestPaginationMemoryEfficiency(t *testing.T) {
 
 // TestOutputFormats tests different output format scenarios
 func TestOutputFormats(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	// Simple server that returns a few PRs
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

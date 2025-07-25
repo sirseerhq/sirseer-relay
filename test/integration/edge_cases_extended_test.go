@@ -30,9 +30,6 @@ import (
 
 // TestUnicodePRData tests handling of Unicode and special characters
 func TestUnicodePRData(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	// Create PRs with various Unicode content
 	prs := []map[string]interface{}{
@@ -85,9 +82,6 @@ func TestUnicodePRData(t *testing.T) {
 
 // TestVeryLargePR tests handling of PRs with thousands of files
 func TestVeryLargePR(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	// Create a PR with 5000 changed files
 	largePR := testutil.NewPullRequestBuilder(1).
@@ -134,9 +128,6 @@ func TestVeryLargePR(t *testing.T) {
 
 // TestConcurrentRequests tests handling of concurrent API requests
 func TestConcurrentRequests(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	var (
 		mu            sync.Mutex
@@ -209,9 +200,6 @@ func TestConcurrentRequests(t *testing.T) {
 
 // TestMalformedGraphQLResponse tests handling of invalid API responses
 func TestMalformedGraphQLResponse(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	tests := []struct {
 		name          string
@@ -274,9 +262,6 @@ func TestMalformedGraphQLResponse(t *testing.T) {
 
 // TestFileSystemErrors tests handling of file system issues
 func TestFileSystemErrors(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	server := testutil.NewMockServerBuilder(t).
 		WithPullRequests(10, 10).
@@ -333,9 +318,6 @@ func TestFileSystemErrors(t *testing.T) {
 
 // TestPRsWithNullFields tests handling of PRs with null/missing fields
 func TestPRsWithNullFields(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	// Create PRs with various null fields
 	prs := []map[string]interface{}{
@@ -413,9 +395,6 @@ func TestPRsWithNullFields(t *testing.T) {
 
 // TestRapidPagination tests handling of many small pages
 func TestRapidPagination(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	pageCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -457,9 +436,6 @@ func TestRapidPagination(t *testing.T) {
 
 // TestInterruptedFetch tests recovery from interrupted fetches
 func TestInterruptedFetch(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	requestCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

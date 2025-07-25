@@ -31,9 +31,6 @@ import (
 
 // TestFetchFirstPageWithOptions tests fetching only the first page without --all flag
 func TestFetchFirstPageWithOptions(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	// Create mock server that returns multiple pages
 	pageSize := 10
@@ -92,9 +89,6 @@ func TestFetchFirstPageWithOptions(t *testing.T) {
 
 // TestFetchWithComplexityRetry tests handling of GraphQL complexity errors
 func TestFetchWithComplexityRetry(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	var requestCount int32
 	var lastBatchSize int
@@ -167,9 +161,6 @@ func TestFetchWithComplexityRetry(t *testing.T) {
 
 // TestProgressFunctions tests progress indicator functionality
 func TestProgressFunctions(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	// Create mock server with multiple pages
 	totalPRs := 53 // Non-round number to test progress calculation
@@ -261,9 +252,6 @@ func TestProgressFunctions(t *testing.T) {
 
 // TestFinalizeFetchResults tests state and metadata file creation
 func TestFinalizeFetchResults(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	// Create mock server with multiple pages
 	totalPRs := 25
@@ -369,9 +357,6 @@ func TestFinalizeFetchResults(t *testing.T) {
 
 // TestIncrementalFetchFunctions tests incremental fetch with state
 func TestIncrementalFetchFunctions(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	// Track which PRs we've served
 	servedPRs := make(map[int]bool)
@@ -585,9 +570,6 @@ func countLines(t *testing.T, filename string) int {
 
 // TestIncrementalWithoutPriorState tests incremental flag without existing state
 func TestIncrementalWithoutPriorState(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Should never be called - expect error before request
@@ -613,9 +595,6 @@ func TestIncrementalWithoutPriorState(t *testing.T) {
 
 // TestBatchSizeReduction tests that batch size is properly reduced on complexity errors
 func TestBatchSizeReduction(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	requestBatchSizes := []int{}
 	complexityErrorCount := 0

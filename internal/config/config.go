@@ -130,11 +130,18 @@ func loadConfigFile(path string, cfg *Config) error {
 // applyEnvOverrides applies environment variable overrides to config
 func applyEnvOverrides(cfg *Config) {
 	// GitHub endpoints
+	// Support both SIRSEER_API_URL and legacy environment variables
+	if endpoint := os.Getenv("SIRSEER_API_URL"); endpoint != "" {
+		cfg.GitHub.GraphQLEndpoint = endpoint
+	} else if endpoint := os.Getenv("GITHUB_API_URL"); endpoint != "" {
+		// Support legacy test environment variable
+		cfg.GitHub.GraphQLEndpoint = endpoint + "/graphql"
+	} else if endpoint := os.Getenv("GITHUB_GRAPHQL_ENDPOINT"); endpoint != "" {
+		cfg.GitHub.GraphQLEndpoint = endpoint
+	}
+	
 	if endpoint := os.Getenv("GITHUB_API_ENDPOINT"); endpoint != "" {
 		cfg.GitHub.APIEndpoint = endpoint
-	}
-	if endpoint := os.Getenv("GITHUB_GRAPHQL_ENDPOINT"); endpoint != "" {
-		cfg.GitHub.GraphQLEndpoint = endpoint
 	}
 
 	// Defaults

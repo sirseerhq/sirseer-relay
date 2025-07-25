@@ -28,9 +28,6 @@ import (
 
 // TestConfigFilePrecedence tests configuration loading and precedence rules
 func TestConfigFilePrecedence(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	// Track what batch size was used in requests
 	var lastBatchSize int
@@ -185,9 +182,6 @@ func TestConfigFilePrecedence(t *testing.T) {
 
 // TestTokenPrecedence tests GitHub token configuration precedence
 func TestTokenPrecedence(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	// Track what token was used
 	var lastToken string
@@ -314,9 +308,6 @@ func TestTokenPrecedence(t *testing.T) {
 
 // TestStateDirPrecedence tests state directory configuration precedence
 func TestStateDirPrecedence(t *testing.T) {
-	if os.Getenv("INTEGRATION_TEST") != "true" {
-		t.Skip("Skipping integration test. Set INTEGRATION_TEST=true to run.")
-	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := testutil.GeneratePRResponse(1, 5, false)
