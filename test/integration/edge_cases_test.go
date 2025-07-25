@@ -68,13 +68,13 @@ func TestZeroPullRequestsRepository(t *testing.T) {
 
 	// Verify output file exists but is empty (or has only metadata comment)
 	testutil.AssertFileExists(t, outputFile)
-	
+
 	// The file should be empty or very small
 	stat, err := os.Stat(outputFile)
 	if err != nil {
 		t.Fatalf("Failed to stat output file: %v", err)
 	}
-	
+
 	if stat.Size() > 100 { // Allow for potential header comment
 		t.Errorf("Expected empty or very small output file, got %d bytes", stat.Size())
 	}
@@ -107,7 +107,7 @@ func TestCtrlCDuringRateLimit(t *testing.T) {
 	cmd := exec.Command(binaryPath, "fetch", "test/repo",
 		"--output", outputFile,
 		"--all")
-	
+
 	cmd.Env = append(os.Environ(),
 		"GITHUB_TOKEN=test-token",
 		"SIRSEER_API_URL="+server.URL+"/graphql",
@@ -154,33 +154,33 @@ func TestInvalidFlagCombinations(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "all_and_incremental",
-			args: []string{"fetch", "test/repo", "--all", "--incremental"},
+			name:    "all_and_incremental",
+			args:    []string{"fetch", "test/repo", "--all", "--incremental"},
 			wantErr: "--all and --incremental flags are mutually exclusive",
 		},
 		{
-			name: "since_after_until",
-			args: []string{"fetch", "test/repo", "--since", "2024-12-31", "--until", "2024-01-01"},
+			name:    "since_after_until",
+			args:    []string{"fetch", "test/repo", "--since", "2024-12-31", "--until", "2024-01-01"},
 			wantErr: "since date must be before until date",
 		},
 		{
-			name: "query_with_other_filters",
-			args: []string{"fetch", "test/repo", "--query", "custom query", "--since", "2024-01-01"},
+			name:    "query_with_other_filters",
+			args:    []string{"fetch", "test/repo", "--query", "custom query", "--since", "2024-01-01"},
 			wantErr: "--query cannot be used with date filters",
 		},
 		{
-			name: "negative_batch_size",
-			args: []string{"fetch", "test/repo", "--batch-size", "-10"},
+			name:    "negative_batch_size",
+			args:    []string{"fetch", "test/repo", "--batch-size", "-10"},
 			wantErr: "invalid batch size",
 		},
 		{
-			name: "zero_batch_size",
-			args: []string{"fetch", "test/repo", "--batch-size", "0"},
+			name:    "zero_batch_size",
+			args:    []string{"fetch", "test/repo", "--batch-size", "0"},
 			wantErr: "invalid batch size",
 		},
 		{
-			name: "batch_size_too_large",
-			args: []string{"fetch", "test/repo", "--batch-size", "101"},
+			name:    "batch_size_too_large",
+			args:    []string{"fetch", "test/repo", "--batch-size", "101"},
 			wantErr: "batch size cannot exceed 100",
 		},
 	}
@@ -226,7 +226,7 @@ func TestLargeRepositoryConstantMemory(t *testing.T) {
 
 		hasMore := endNum < totalPRs
 		response := testutil.GeneratePRResponse(startNum, endNum, hasMore)
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	}))

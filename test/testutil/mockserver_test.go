@@ -150,19 +150,29 @@ func TestGeneratePRResponseFields(t *testing.T) {
 		t.Error("Author missing login")
 	}
 
-	// Check arrays
-	labels, ok := pr["labels"].([]interface{})
+	// Check nested arrays (GraphQL format)
+	labelsObj, ok := pr["labels"].(map[string]interface{})
 	if !ok {
-		t.Fatal("PR missing labels array")
+		t.Fatal("PR missing labels object")
 	}
 
-	assignees, ok := pr["assignees"].([]interface{})
+	labelsNodes, ok := labelsObj["nodes"].([]interface{})
 	if !ok {
-		t.Fatal("PR missing assignees array")
+		t.Fatal("Labels missing nodes array")
+	}
+
+	assigneesObj, ok := pr["assignees"].(map[string]interface{})
+	if !ok {
+		t.Fatal("PR missing assignees object")
+	}
+
+	assigneesNodes, ok := assigneesObj["nodes"].([]interface{})
+	if !ok {
+		t.Fatal("Assignees missing nodes array")
 	}
 
 	// Arrays should be empty but present
-	if labels == nil || assignees == nil {
+	if labelsNodes == nil || assigneesNodes == nil {
 		t.Error("Arrays should not be nil")
 	}
 }
