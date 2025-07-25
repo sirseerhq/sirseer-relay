@@ -147,6 +147,16 @@ Examples:
 // fetchFirstPageWithOptions (default) or fetchAllPullRequestsWithOptions (with --all flag).
 // Returns an error if any step fails, which will be mapped to an appropriate exit code.
 func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile, outputDir, metadataFile string, fetchAll bool, batchSize int, since, until string, incremental bool, cfg *config.Config) error {
+	// Create default client factory
+	clientFactory := func(token string) github.Client {
+		return github.NewGraphQLClient(token, cfg.GitHub.GraphQLEndpoint)
+	}
+	return RunFetchWithClient(ctx, repoArg, tokenFlag, outputFile, outputDir, metadataFile, fetchAll, batchSize, since, until, incremental, cfg, clientFactory)
+}
+
+// RunFetchWithClient executes the main fetch logic with an injectable client factory.
+// This allows for easier testing with mock clients.
+func RunFetchWithClient(ctx context.Context, repoArg, tokenFlag, outputFile, outputDir, metadataFile string, fetchAll bool, batchSize int, since, until string, incremental bool, cfg *config.Config, clientFactory func(token string) github.Client) error {
 	// Parse repository argument
 	owner, repo, err := parseRepository(repoArg)
 	if err != nil {
@@ -170,8 +180,8 @@ func runFetch(ctx context.Context, repoArg, tokenFlag, outputFile, outputDir, me
 	}
 	defer writer.Close()
 
-	// Create GitHub client with config endpoints
-	client := github.NewGraphQLClient(token, cfg.GitHub.GraphQLEndpoint)
+	// Create GitHub client using the factory
+	client := clientFactory(token)
 
 	// Parse and validate date flags
 	sinceTime, untilTime, err := parseDateFlags(since, until)

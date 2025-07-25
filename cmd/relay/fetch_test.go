@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirseerhq/sirseer-relay/internal/config"
 	relaierrors "github.com/sirseerhq/sirseer-relay/internal/errors"
 	"github.com/sirseerhq/sirseer-relay/internal/github"
 	"github.com/sirseerhq/sirseer-relay/internal/metadata"
@@ -961,13 +962,13 @@ func TestRunFetch(t *testing.T) {
 			name:    "missing repository argument",
 			args:    []string{},
 			wantErr: true,
-			errMsg:  "expected exactly 1 argument",
+			errMsg:  "accepts 1 arg(s), received 0",
 		},
 		{
 			name:    "invalid repository format",
 			args:    []string{"invalid-repo"},
 			wantErr: true,
-			errMsg:  "must be in format",
+			errMsg:  "invalid repository format",
 		},
 		{
 			name: "missing token",
@@ -976,7 +977,7 @@ func TestRunFetch(t *testing.T) {
 				"GITHUB_TOKEN": "",
 			},
 			wantErr: true,
-			errMsg:  "GitHub token is required",
+			errMsg:  "GitHub token not found",
 		},
 		{
 			name: "fetch with output file",
@@ -1065,14 +1066,42 @@ func TestRunFetch(t *testing.T) {
 			cmd.SetOut(&outBuf)
 			cmd.SetErr(&errBuf)
 
-			// Set up mock client if provided
-			if tt.setupMock != nil {
-				// This would require injecting the mock client into the command
-				// For now, we'll test the command validation logic
-			}
-
 			// Execute command
-			err := cmd.Execute()
+			var err error
+			if tt.setupMock != nil {
+				// Use the mock client for testing
+				mockClient := tt.setupMock()
+				clientFactory := func(token string) github.Client {
+					return mockClient
+				}
+				
+				// Parse args to extract values
+				repoArg := ""
+				if len(tt.args) > 0 {
+					repoArg = tt.args[0]
+				}
+				
+				// Get flag values from command
+				cmd.ParseFlags(tt.args[1:])
+				tokenFlag, _ := cmd.Flags().GetString("token")
+				outputFile, _ := cmd.Flags().GetString("output")
+				outputDir, _ := cmd.Flags().GetString("output-dir")
+				metadataFile, _ := cmd.Flags().GetString("metadata-file")
+				fetchAll, _ := cmd.Flags().GetBool("all")
+				batchSize, _ := cmd.Flags().GetInt("batch-size")
+				since, _ := cmd.Flags().GetString("since")
+				until, _ := cmd.Flags().GetString("until")
+				incremental, _ := cmd.Flags().GetBool("incremental")
+				
+				// Load config for test
+				cfg, _ := config.LoadConfigForRepo("", repoArg)
+				
+				// Run with mock client
+				err = RunFetchWithClient(context.Background(), repoArg, tokenFlag, outputFile, outputDir, metadataFile, fetchAll, batchSize, since, until, incremental, cfg, clientFactory)
+			} else {
+				// Execute command normally for validation tests
+				err = cmd.Execute()
+			}
 
 			// Check error
 			if (err != nil) != tt.wantErr {
