@@ -137,22 +137,6 @@ func AssertExitCode(t *testing.T, result CLIResult, expected int) {
 	}
 }
 
-// RunWithMockServer runs CLI with a mock server and returns the result
-func RunWithMockServer(t *testing.T, server *MockServer, repo string, args ...string) CLIResult {
-	t.Helper()
-
-	// Build full args
-	fullArgs := []string{"fetch", repo}
-	fullArgs = append(fullArgs, args...)
-
-	// Set up environment with test token
-	env := map[string]string{
-		"GITHUB_TOKEN":    "test-token",
-		"SIRSEER_API_URL": server.URL + "/graphql",
-	}
-
-	return RunCLI(t, fullArgs, env)
-}
 
 // findProjectRoot finds the project root by looking for go.mod
 func findProjectRoot() (string, error) {
